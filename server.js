@@ -118,6 +118,25 @@ function scheduleAutoSync() {
 }
 scheduleAutoSync();
 
+/* ---------- GHIN golfer search (name -> ghin/index), used for roster setup ---------- */
+app.get("/api/search", async (req, res) => {
+  const username = process.env.GHIN_USERNAME, password = process.env.GHIN_PASSWORD;
+  if (!username || !password) return res.status(400).json({ error: "GHIN creds not set" });
+  try {
+    const client = new GhinClient({ username, password });
+    const golfers = await client.golfers.search({
+      last_name: req.query.last || undefined,
+      first_name: req.query.first || undefined,
+      state: req.query.state || undefined,
+      status: "Active", per_page: 50
+    });
+    res.json({ golfers: (golfers || []).map(g => ({
+      ghin: g.ghin, first: g.first_name, last: g.last_name,
+      club: g.club_name, state: g.state, hi: (g.hi_value ?? g.handicap_index)
+    })) });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
 /* ---------- serve the single-page app (no other static assets) ---------- */
 const INDEX = path.join(__dirname, "index.html");
 app.get("*", (req, res) => res.sendFile(INDEX));
