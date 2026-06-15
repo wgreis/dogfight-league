@@ -116,7 +116,9 @@ const DEFAULT_SETTINGS = {
   seasonPoints:[100,90,80,70,65,60,55,50,45,40,35,30,25,20,15,10,5], // 100-90-80-70 then by 5s; beyond list = lowest
   rollingWindow:0,          // 0 = static 36-HC quota; >0 = avg of last N point totals (when available)
   team1Name:"Team 1",
-  team2Name:"Team 2"
+  team2Name:"Team 2",
+  seasonBuyIn:100,          // season-long prize buy-in per player
+  rakePct:10               // % of each weekly purse pulled into the season prize pool
 };
 const PINE_TREE = {
   id:"pinetree", name:"Pine Tree Golf & Country Club", location:"Birmingham, AL", par:72,
@@ -271,7 +273,7 @@ function calcRound(round, roundIndex){
       const points = hasPts ? Number(e.points) : null;
       return {
         playerId:p.id, name:p.name, handicap:p.handicap,
-        quota, points, hasPts,
+        quota, points, hasPts, skinsIn: !!e.skinsIn,
         diff: hasPts ? points - quota : null,
         gross: (e.gross||[]).slice(0,nHoles).map(g=> (g===""||g==null)?null:Number(g))
       };
@@ -281,34 +283,36 @@ function calcRound(round, roundIndex){
   const scored = rows.filter(r=>r.hasPts);
   const groups = rankAndAward(scored);
 
-  // PURSE
+  // PURSE (everyone in the round pays the weekly buy-in; a rake % is pulled to the season prize pool, the rest pays out top finishers)
   const field = scored.length;
   const pot = field * Number(S.settings.buyIn||0);
+  const rake = Math.round(pot * (Number(S.settings.rakePct||0)/100) * 100)/100;
+  const payoutPot = pot - rake;
   scored.forEach(r=> r.purse=0);
-  if(pot>0 && field>0){
+  if(payoutPot>0 && field>0){
     const mode=S.settings.purseMode;
     if(mode==="winnertakeall"){
-      const winners=groups[1]||[]; winners.forEach(r=> r.purse = pot/winners.length);
+      const winners=groups[1]||[]; winners.forEach(r=> r.purse = payoutPot/winners.length);
     } else if(mode==="beatquota"){
-      const win = scored.filter(r=>r.diff>0); // beat quota (strictly positive)
-      if(win.length) win.forEach(r=> r.purse = pot/win.length);
-      else { const w=groups[1]||[]; w.forEach(r=> r.purse=pot/w.length); } // nobody beat quota -> top finisher
-    } else { // top3 -> 50/30/20 across distinct positions 1,2,3 (split within ties)
+      const win = scored.filter(r=>r.diff>0);
+      if(win.length) win.forEach(r=> r.purse = payoutPot/win.length);
+      else { const w=groups[1]||[]; w.forEach(r=> r.purse=payoutPot/w.length); }
+    } else { // top3 50/30/20
       const split=[0.5,0.3,0.2];
-      [1,2,3].forEach((p,idx)=>{ const g=groups[p]; if(g&&g.length) g.forEach(r=> r.purse += pot*split[idx]/g.length); });
-      // if fewer than 3 distinct positions exist, redistribute leftover to winner
+      [1,2,3].forEach((p,idx)=>{ const g=groups[p]; if(g&&g.length) g.forEach(r=> r.purse += payoutPot*split[idx]/g.length); });
       const paid=scored.reduce((a,r)=>a+r.purse,0);
-      if(paid < pot-0.001){ const w=groups[1]||[]; const left=pot-paid; w.forEach(r=> r.purse += left/w.length); }
+      if(paid < payoutPot-0.001){ const w=groups[1]||[]; const left=payoutPot-paid; w.forEach(r=> r.purse += left/w.length); }
     }
   }
 
-  // SKINS (per hole low score; ties carry over; net optional)
+  // SKINS (opt-in $ game: only opted-in players pay and can win; ties carry over; net optional)
   const skinsBuyIn=Number(S.settings.skinsBuyIn||0);
-  const withGross = rows.filter(r=> r.gross.length===nHoles && r.gross.every(g=>g!=null));
+  const optedIn = rows.filter(r=> r.skinsIn);
+  const withGross = optedIn.filter(r=> r.gross.length===nHoles && r.gross.every(g=>g!=null));
   let skinsDetail=[]; let skinsPot=0;
   rows.forEach(r=> r.skinsWon=0);
   if(skinsBuyIn>0 && withGross.length>=2){
-    skinsPot = withGross.length * skinsBuyIn;
+    skinsPot = optedIn.length * skinsBuyIn;
     let carry=0;
     for(let h=0;h<nHoles;h++){
       // net: subtract a stroke on holes where index <= playerStrokes. We approximate stroke index = hole order?
@@ -344,7 +348,7 @@ function calcRound(round, roundIndex){
   const byId={}; rows.forEach(r=> byId[r.playerId]=r);
   scored.forEach(r=> Object.assign(byId[r.playerId], r));
   const ordered = [...scored, ...rows.filter(r=>!r.hasPts)];
-  return {rows:ordered, pot, skinsPot, skinsDetail, field, perSkin: (skinsPot && ordered.reduce((a,r)=>a+(r.skinsWon||0),0))? skinsPot/ordered.reduce((a,r)=>a+(r.skinsWon||0),0):0};
+  return {rows:ordered, pot, rake, payoutPot, optedIn:optedIn.length, skinsPot, skinsDetail, field, perSkin: (skinsPot && ordered.reduce((a,r)=>a+(r.skinsWon||0),0))? skinsPot/ordered.reduce((a,r)=>a+(r.skinsWon||0),0):0};
 }
 
 /* ============================ SEASON CALC ============================ */
@@ -384,6 +388,23 @@ function render(){
   else if(activeTab==="rules") v.innerHTML=viewRules();
 }
 
+/* ---------- Season prize pool ---------- */
+function seasonPrizePool(){
+  const buyins = Number(S.settings.seasonBuyIn||0) * S.players.length;
+  let rake=0; S.rounds.forEach((rd,i)=>{ rake += (calcRound(rd,i).rake||0); });
+  rake=Math.round(rake*100)/100;
+  return { buyins, rake, total: Math.round((buyins+rake)*100)/100 };
+}
+function prizePoolCard(){
+  const pp=seasonPrizePool();
+  return `<div class="card"><h2>Season Prize Pool</h2><div class="sub">${money(S.settings.seasonBuyIn)} season buy-in per player + ${S.settings.rakePct}% weekly purse rake</div>
+    <div class="grid-stats">
+      <div class="stat" style="border-color:var(--accent2)"><div class="k">Total Pool</div><div class="v money">${money(pp.total)}</div></div>
+      <div class="stat"><div class="k">Season Buy-ins</div><div class="v">${money(pp.buyins)} <small>${S.players.length}×${money(S.settings.seasonBuyIn)}</small></div></div>
+      <div class="stat"><div class="k">Weekly Rake</div><div class="v money">${money(pp.rake)}</div></div>
+    </div></div>`;
+}
+
 /* ---------- Team battle (season-long Team 1 vs Team 2) ---------- */
 function teamBattleCard(season){
   const t={1:{name:S.settings.team1Name||'Team 1',pts:0,diff:0,money:0,n:0},
@@ -409,7 +430,7 @@ function viewDashboard(){
   const played=season.filter(s=>s.rounds>0);
   const totalPot = S.rounds.reduce((a,rd,i)=> a+calcRound(rd,i).pot+calcRound(rd,i).skinsPot,0);
   const leader = played[0];
-  let html=teamBattleCard(season)+`<div class="card"><h2>Season Standings</h2>
+  let html=teamBattleCard(season)+prizePoolCard()+`<div class="card"><h2>Season Standings</h2>
     <div class="sub">${S.rounds.length} round${S.rounds.length!==1?'s':''} played • ${S.players.length} players • ${money(totalPot)} put in play</div>
     <div class="grid-stats">
       <div class="stat"><div class="k">Current Leader</div><div class="v">${leader?leader.name:"—"}</div></div>
@@ -476,8 +497,8 @@ function roundResultTable(c){
   });
   h+=`</tbody></table>`;
   let foot=[];
-  if(c.pot>0) foot.push(`Purse: ${money(c.pot)}`);
-  if(c.skinsPot>0) foot.push(`Skins pot: ${money(c.skinsPot)} (${money(c.perSkin)}/skin)`);
+  if(c.pot>0) foot.push(`Purse ${money(c.pot)} → ${money(c.payoutPot)} paid${c.rake>0?` · ${money(c.rake)} to season pool`:''}`);
+  if(c.skinsPot>0) foot.push(`Skins pot ${money(c.skinsPot)} (${money(c.perSkin)}/skin)`);
   if(foot.length) h+=`<div class="note">${foot.join(' &nbsp;•&nbsp; ')}</div>`;
   return h;
 }
@@ -529,6 +550,13 @@ function roundEditor(rd,i,c){
   const quotaDesc = (rc && rtee) ? `${S.settings.quotaCap} − Course Handicap (Index adjusted for the ${rd.tee} tee, ${rtee.rating}/${rtee.slope})` : `${S.settings.quotaCap} − Index`;
   h+=`<div class="note">Quota = ${nHoles===9?'½ × ('+quotaDesc+')':quotaDesc} — auto-calculated from each player's handicap and the selected tee, and recalculated when you change the tee. Editable per round.${nHoles===9?' <b>9-hole</b> round (half quota).':''} ${mode==='holes'?'Hole-by-hole gross scores feed the skins game.':'Switch to <b>Hole-by-hole</b> to also run skins.'}</div>`;
   if(rc) h+=`<div class="note">${rc.name}${rd.tee?` · <b>${rd.tee}</b> tee`:''}${rtee?` · rating ${rtee.rating} / slope ${rtee.slope} · ${rtee.yards} yds`:''} · par ${rc.par}. Pars &amp; stroke index show on the hole grid; in Hole-by-hole you can auto-fill points from scores.</div>`;
+  if(Number(S.settings.skinsBuyIn||0)>0){
+    const inC=rd.entries.filter(e=>e.skinsIn).length;
+    h+=`<h3>Skins opt-in &mdash; $${S.settings.skinsBuyIn} each &middot; ${inC} in &middot; ${money(inC*Number(S.settings.skinsBuyIn))} pot</h3><div class="row" style="gap:6px;margin-bottom:6px">`;
+    rd.entries.forEach(e=>{ const p=S.players.find(x=>x.id===e.playerId); if(!p) return;
+      h+=`<label style="flex:0 0 auto;display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid ${e.skinsIn?'var(--accent)':'var(--line)'};border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer"><input type="checkbox" style="width:auto" ${e.skinsIn?'checked':''} onchange="toggleSkins('${rd.id}','${p.id}',this.checked)"> ${p.name}</label>`; });
+    h+=`</div>`;
+  }
 
   if(mode==="points"){
     h+=`<table><thead><tr><th>Player</th><th class="num">Quota</th><th class="num">Points</th><th class="num">+/-</th></tr></thead><tbody>`;
@@ -645,6 +673,11 @@ function viewSettings(){
         <option value="winnertakeall" ${s.purseMode==='winnertakeall'?'selected':''}>Winner takes all</option>
       </select></div>
     </div>
+    <h3>Season prize pool</h3>
+    <div class="row">
+      <div><label>Season buy-in per player ($)</label><input type="number" value="${s.seasonBuyIn}" onchange="updSetting('seasonBuyIn',this.value)"></div>
+      <div><label>Weekly rake from purse (%)</label><input type="number" value="${s.rakePct}" onchange="updSetting('rakePct',this.value)"></div>
+    </div>
     <h3>Skins</h3>
     <div class="row">
       <div><label>Skins buy-in per player ($, 0 = off)</label><input type="number" value="${s.skinsBuyIn}" onchange="updSetting('skinsBuyIn',this.value)"></div>
@@ -695,10 +728,11 @@ function viewRules(){
 
   <h3>4. The money (three games at once)</h3>
   <ul>
-    <li><b>Weekly purse:</b> everyone buys in (currently ${money(S.settings.buyIn)}). The pot pays out by finish vs. quota — currently set to <b>${s_purseLabel()}</b>.</li>
-    <li><b>Skins:</b> optional side pot (currently ${S.settings.skinsBuyIn>0?money(S.settings.skinsBuyIn)+' buy-in':'off'}). Low score on a hole wins that hole's skin; ties carry the skin to the next hole. Pot splits evenly across all skins won.</li>
+    <li><b>Weekly purse:</b> everyone in the round buys in (currently ${money(S.settings.buyIn)}). ${S.settings.rakePct>0?`${S.settings.rakePct}% is pulled into the season prize pool; the rest`:'The pot'} pays out by finish vs. quota — currently <b>${s_purseLabel()}</b>.</li>
+    <li><b>Skins:</b> a separate <b>opt-in</b> game (currently ${S.settings.skinsBuyIn>0?money(S.settings.skinsBuyIn)+' buy-in':'off'}). Only players who opt in that round pay in and can win — if you don't opt in, you can't win a skin. Low score on a hole wins it; ties carry to the next hole; the pot splits evenly across all skins won.</li>
     <li><b>Season points:</b> each round awards points by finish position (${S.settings.seasonPoints.join('-')}…, then 1). These accumulate all season for the overall individual title.</li>
     <li><b>Team battle:</b> every player is on <b>${S.settings.team1Name||'Team 1'}</b> or <b>${S.settings.team2Name||'Team 2'}</b>. Those same season points also sum by team into a season-long Team vs Team battle, shown at the top of the Standings page. Set each player's team on the Players tab.</li>
+    <li><b>Season prize pool:</b> a ${money(S.settings.seasonBuyIn)} buy-in per player at season start, plus ${S.settings.rakePct}% of every weekly purse, builds one big end-of-season pot (shown on the Standings page).</li>
   </ul>
 
   <h3>Playing 9 holes &amp; combining nines</h3>
@@ -754,9 +788,10 @@ function updGross(rid,pid,h,v){ const rd=S.rounds.find(x=>x.id===rid); const e=r
   if(!e)return; if(!e.gross) e.gross=Array(18).fill(""); e.gross[h]= v===""?"":Number(v);
   // auto-sum stableford if all 18 present? leave points manual. just save.
   save(); render(); }
+function toggleSkins(rid,pid,checked){ const rd=S.rounds.find(x=>x.id===rid); const e=rd&&rd.entries.find(x=>x.playerId===pid); if(!e)return; e.skinsIn=!!checked; save(); render(); }
 
 function updSetting(k,v){
-  if(["buyIn","skinsBuyIn","quotaCap","rollingWindow"].includes(k)) v=parseFloat(v)||0;
+  if(["buyIn","skinsBuyIn","quotaCap","rollingWindow","seasonBuyIn","rakePct"].includes(k)) v=parseFloat(v)||0;
   S.settings[k]=v; save(); render();
 }
 function updSeasonPoints(v){
