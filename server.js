@@ -69,10 +69,9 @@ function parseIndex(hi) {
   return isNaN(n) ? null : n;
 }
 
-app.post("/api/sync", async (req, res) => {
+async function runSync() {
   const username = process.env.GHIN_USERNAME, password = process.env.GHIN_PASSWORD;
-  if (!username || !password)
-    return res.status(400).json({ error: "GHIN_USERNAME / GHIN_PASSWORD are not set in Railway variables." });
+  if (!username || !password) { const e = new Error("GHIN_USERNAME / GHIN_PASSWORD are not set in Railway variables."); e.code = "NO_CREDS"; throw e; }
 
   const data = readData();
   const client = new GhinClient({ username, password });
@@ -94,9 +93,30 @@ app.post("/api/sync", async (req, res) => {
       errors.push({ ghin, name: p.name, error: String(e.message || e) });
     }
   }
-  try { writeData(data); } catch (e) { return res.status(500).json({ error: "saved sync but failed to persist: " + e.message }); }
-  res.json({ updated, errors });
+  writeData(data);
+  return { updated, errors };
+}
+
+app.post("/api/sync", async (req, res) => {
+  try { res.json(await runSync()); }
+  catch (e) { res.status(e.code === "NO_CREDS" ? 400 : 500).json({ error: String(e.message || e) }); }
 });
+
+// Scheduled auto-sync: refresh handicaps on boot (every deploy) and on a cycle,
+// so indices are current before each play day. Tune cadence with SYNC_INTERVAL_HOURS.
+const SYNC_HOURS = Number(process.env.SYNC_INTERVAL_HOURS || 24);
+function scheduleAutoSync() {
+  if (!process.env.GHIN_USERNAME || !process.env.GHIN_PASSWORD) {
+    console.log("[auto-sync] disabled (set GHIN_USERNAME/GHIN_PASSWORD to enable)"); return;
+  }
+  const run = () => runSync()
+    .then(r => console.log(`[auto-sync] ${new Date().toISOString()} updated ${r.updated.length}, errors ${r.errors.length}`))
+    .catch(e => console.log("[auto-sync] failed:", e.message));
+  setTimeout(run, 30 * 1000);                       // shortly after boot
+  setInterval(run, Math.max(1, SYNC_HOURS) * 3600 * 1000); // then on a cycle (default daily)
+  console.log(`[auto-sync] enabled: on boot + every ${SYNC_HOURS}h`);
+}
+scheduleAutoSync();
 
 /* ---------- serve the single-page app (no other static assets) ---------- */
 const INDEX = path.join(__dirname, "index.html");
