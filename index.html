@@ -118,10 +118,21 @@ const DEFAULT_SETTINGS = {
   team1Name:"Team 1",
   team2Name:"Team 2"
 };
+const PINE_TREE = {
+  id:"pinetree", name:"Pine Tree Golf & Country Club", location:"Birmingham, AL", par:72,
+  holesPar:[5,3,4,4,4,5,3,4,4, 4,3,4,5,4,5,3,4,4],
+  holesSI: [15,11,5,1,7,17,13,9,3, 4,14,8,16,2,10,18,6,12],
+  tees:[
+    {name:"Black", rating:72.8, slope:133, yards:6704},
+    {name:"Grey",  rating:71.5, slope:132, yards:6465},
+    {name:"White", rating:70.4, slope:130, yards:6228}
+  ]
+};
 const SEED = {
   settings:{...DEFAULT_SETTINGS},
   players:[],
-  rounds:[]
+  rounds:[],
+  courses:[ JSON.parse(JSON.stringify(PINE_TREE)) ]
 };
 let S = JSON.parse(JSON.stringify(SEED));
 let activeTab = "dashboard";
@@ -135,6 +146,7 @@ async function init(){
   }catch(e){
     try{ const raw=localStorage.getItem("dogfightLeague"); if(raw){ const o=JSON.parse(raw); o.settings={...DEFAULT_SETTINGS,...o.settings}; S=o; } }catch(_){}
   }
+  if(!S.courses || !S.courses.length) S.courses=[JSON.parse(JSON.stringify(PINE_TREE))];
   render();
 }
 // Save: cache locally immediately, push to server (debounced).
@@ -171,6 +183,15 @@ function defaultQuota(player, roundIndex, holes){
   const base = quotaFor(player, roundIndex);
   return holes===9 ? Math.round(base/2) : base;
 }
+/* ---- course helpers ---- */
+function getCourse(id){ return (S.courses||[]).find(c=>c.id===id); }
+function getTee(course,name){ return course && (course.tees||[]).find(t=>t.name===name); }
+function courseHandicap(index, course, tee){
+  if(course==null||tee==null||index==null||index==="") return null;
+  return Math.round(Number(index)*tee.slope/113 + (tee.rating - course.par));
+}
+function stablefordPts(gross, par){ if(gross==null||gross===""||par==null) return 0; return Math.max(0, 2 - (Number(gross)-par)); }
+
 /* ---- rank scored rows by diff, award season points (ties shared) ---- */
 function rankAndAward(scored){
   scored.sort((a,b)=> b.diff - a.diff);
@@ -229,6 +250,7 @@ function seasonEvents(){
 /* ============================ ROUND CALC ============================ */
 function calcRound(round, roundIndex){
   const nHoles = Number(round.holes)||18;
+  const course = getCourse(round.courseId); const tee = getTee(course, round.tee);
   let rows = round.entries
     .map(e=>{
       const p = S.players.find(x=>x.id===e.playerId);
@@ -283,8 +305,11 @@ function calcRound(round, roundIndex){
       const vals = withGross.map(r=>{
         let g = r.gross[h];
         if(S.settings.skinsType==="net"){
-          const hc=Math.round(nHoles===9 ? r.handicap/2 : r.handicap);
-          const strokesThisHole = Math.floor(hc/nHoles) + ((h < (hc%nHoles))?1:0);
+          const ch = courseHandicap(r.handicap, course, tee);
+          const hc = Math.round(ch!=null ? ch : (nHoles===9 ? r.handicap/2 : r.handicap));
+          let strokesThisHole;
+          if(course && course.holesSI){ const base=Math.floor(hc/18), extra=((hc%18)+18)%18; strokesThisHole = base + (course.holesSI[h] <= extra ? 1 : 0); }
+          else { strokesThisHole = Math.floor(hc/nHoles) + ((h < (hc%nHoles))?1:0); }
           g = g - strokesThisHole;
         }
         return {r, g};
@@ -470,9 +495,11 @@ function roundEditor(rd,i,c){
   const mode = rd.entryMode||"points"; // points | holes
   const nHoles = Number(rd.holes)||18;
   const partner = partnerOf(rd);
+  const rc = getCourse(rd.courseId); const rtee = getTee(rc, rd.tee);
   let h=`<div class="row" style="margin-top:12px">
     <div><label>Date</label><input type="date" value="${rd.date||''}" onchange="updRound('${rd.id}','date',this.value)"></div>
-    <div><label>Course</label><input value="${rd.course||''}" placeholder="Course name" onchange="updRound('${rd.id}','course',this.value)"></div>
+    <div><label>Course</label><select onchange="setRoundCourse('${rd.id}',this.value)"><option value="">— other / none —</option>${(S.courses||[]).map(co=>`<option value="${co.id}" ${rd.courseId===co.id?'selected':''}>${co.name}</option>`).join('')}</select></div>
+    ${rc?`<div style="flex:0 0 auto"><label>Tees</label><select onchange="updRound('${rd.id}','tee',this.value)">${(rc.tees||[]).map(t=>`<option value="${t.name}" ${rd.tee===t.name?'selected':''}>${t.name} ${t.rating}/${t.slope}</option>`).join('')}</select></div>`:''}
     <div style="flex:0 0 auto"><label>Holes</label>
       <div class="seg"><button class="${nHoles===18?'on':''}" onclick="updRound('${rd.id}','holes',18)">18</button>
       <button class="${nHoles===9?'on':''}" onclick="updRound('${rd.id}','holes',9)">9</button></div></div>
@@ -489,6 +516,7 @@ function roundEditor(rd,i,c){
       </select></div></div>`;
   }
   h+=`<div class="note">Quota = ${nHoles===9?'½ × ('+S.settings.quotaCap+' − handicap)':S.settings.quotaCap+' − handicap'} (auto-filled, editable per round). Enter each player's Stableford <b>points</b>. ${mode==='holes'?'Hole-by-hole gross scores feed the skins game and auto-sum is shown.':'Switch to <b>Hole-by-hole</b> to also run skins.'}${nHoles===9?' This is a <b>9-hole</b> round.':''}</div>`;
+  if(rc) h+=`<div class="note">${rc.name}${rd.tee?` · <b>${rd.tee}</b> tee`:''}${rtee?` · rating ${rtee.rating} / slope ${rtee.slope} · ${rtee.yards} yds`:''} · par ${rc.par}. Pars &amp; stroke index show on the hole grid; in Hole-by-hole you can auto-fill points from scores.</div>`;
 
   if(mode==="points"){
     h+=`<table><thead><tr><th>Player</th><th class="num">Quota</th><th class="num">Points</th><th class="num">+/-</th></tr></thead><tbody>`;
@@ -504,6 +532,8 @@ function roundEditor(rd,i,c){
     h+=`<div style="overflow-x:auto"><table class="scoregrid"><thead><tr><th>Player</th>`;
     for(let n=1;n<=nHoles;n++) h+=`<th class="num hsmall">${n}</th>`;
     h+=`<th class="num">Gross</th><th class="num">Pts</th><th class="num">Quota</th><th class="num">+/-</th></tr></thead><tbody>`;
+    if(rc){ h+=`<tr style="color:var(--muted)"><td class="hsmall">Par</td>`; for(let n=0;n<nHoles;n++) h+=`<td class="num hsmall">${rc.holesPar[n]}</td>`; h+=`<td></td><td></td><td></td><td></td></tr>`;
+            h+=`<tr style="color:var(--muted)"><td class="hsmall">SI</td>`; for(let n=0;n<nHoles;n++) h+=`<td class="num hsmall">${rc.holesSI[n]}</td>`; h+=`<td></td><td></td><td></td><td></td></tr>`; }
     rd.entries.forEach(e=>{
       const r=c.rows.find(x=>x.playerId===e.playerId)||{};
       const g=e.gross||Array(nHoles).fill("");
@@ -516,6 +546,7 @@ function roundEditor(rd,i,c){
         <td class="num ${r.diff>=0?'plus':'minus'}">${r.hasPts?signed(r.diff):'—'}</td></tr>`;
     });
     h+=`</tbody></table></div>`;
+    if(rc) h+=`<div class="toolbar" style="margin-top:8px"><button class="mini" onclick="fillPoints('${rd.id}')">⚑ Auto-fill points from scores (gross Stableford)</button></div>`;
   }
   h+=`<h3>Results</h3>${roundResultTable(c)}`;
   if(partner){ const other=S.rounds.find(r=>r.id===partner); if(other){ const ev=combinedEvent(rd, other, S.rounds.indexOf(rd), S.rounds.indexOf(other)); h+=`<h3>Combined 18 &mdash; with ${other.date||'paired nine'}${other.course?' ('+other.course+')':''}</h3>`+combinedTable(ev); } }
@@ -698,6 +729,8 @@ function newRound(){
   save(); go('rounds');
 }
 function updRound(id,f,v){ const rd=S.rounds.find(x=>x.id===id); if(!rd)return; rd[f]=v; save(); render(); }
+function setRoundCourse(rid,cid){ const rd=S.rounds.find(x=>x.id===rid); if(!rd)return; rd.courseId=cid||""; const co=getCourse(cid); rd.course=co?co.name:""; if(co && !getTee(co,rd.tee)) rd.tee=co.tees[0]?co.tees[0].name:""; save(); render(); }
+function fillPoints(rid){ const rd=S.rounds.find(x=>x.id===rid); if(!rd)return; const co=getCourse(rd.courseId); if(!co){ alert("Pick a course first."); return; } const nH=Number(rd.holes)||18; let filled=0; rd.entries.forEach(e=>{ const g=e.gross||[]; if(g.slice(0,nH).some(x=>x===""||x==null)) return; let pts=0; for(let hh=0;hh<nH;hh++) pts+=stablefordPts(g[hh], co.holesPar[hh]); e.points=pts; filled++; }); save(); render(); alert(filled?`Filled gross Stableford points for ${filled} player(s).`:"No players have a full set of hole scores yet."); }
 function delRound(id){ if(!confirm("Delete this round?"))return; S.rounds=S.rounds.filter(r=>r.id!==id); save(); render(); }
 function updEntry(rid,pid,f,v){ const rd=S.rounds.find(x=>x.id===rid); const e=rd.entries.find(x=>x.playerId===pid);
   if(!e)return; e[f]= v===""? "" : Number(v); save(); render(); }
