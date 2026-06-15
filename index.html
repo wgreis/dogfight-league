@@ -118,7 +118,7 @@ const DEFAULT_SETTINGS = {
   team1Name:"Team 1",
   team2Name:"Team 2",
   seasonBuyIn:100,          // season-long prize buy-in per player
-  rakePct:10               // % of each weekly purse pulled into the season prize pool
+  rakeFlat:20              // flat $ pulled from each weekly purse into the season prize pool
 };
 const PINE_TREE = {
   id:"pinetree", name:"Pine Tree Golf & Country Club", location:"Birmingham, AL", par:72,
@@ -286,7 +286,7 @@ function calcRound(round, roundIndex){
   // PURSE (everyone in the round pays the weekly buy-in; a rake % is pulled to the season prize pool, the rest pays out top finishers)
   const field = scored.length;
   const pot = field * Number(S.settings.buyIn||0);
-  const rake = Math.round(pot * (Number(S.settings.rakePct||0)/100) * 100)/100;
+  const rake = Math.min(pot, Number(S.settings.rakeFlat||0));
   const payoutPot = pot - rake;
   scored.forEach(r=> r.purse=0);
   if(payoutPot>0 && field>0){
@@ -397,7 +397,7 @@ function seasonPrizePool(){
 }
 function prizePoolCard(){
   const pp=seasonPrizePool();
-  return `<div class="card"><h2>Season Prize Pool</h2><div class="sub">${money(S.settings.seasonBuyIn)} season buy-in per player + ${S.settings.rakePct}% weekly purse rake</div>
+  return `<div class="card"><h2>Season Prize Pool</h2><div class="sub">${money(S.settings.seasonBuyIn)} season buy-in per player + ${money(S.settings.rakeFlat)} per round from the purse</div>
     <div class="grid-stats">
       <div class="stat" style="border-color:var(--accent2)"><div class="k">Total Pool</div><div class="v money">${money(pp.total)}</div></div>
       <div class="stat"><div class="k">Season Buy-ins</div><div class="v">${money(pp.buyins)} <small>${S.players.length}×${money(S.settings.seasonBuyIn)}</small></div></div>
@@ -676,7 +676,7 @@ function viewSettings(){
     <h3>Season prize pool</h3>
     <div class="row">
       <div><label>Season buy-in per player ($)</label><input type="number" value="${s.seasonBuyIn}" onchange="updSetting('seasonBuyIn',this.value)"></div>
-      <div><label>Weekly rake from purse (%)</label><input type="number" value="${s.rakePct}" onchange="updSetting('rakePct',this.value)"></div>
+      <div><label>Rake to season pool per round ($)</label><input type="number" value="${s.rakeFlat}" onchange="updSetting('rakeFlat',this.value)"></div>
     </div>
     <h3>Skins</h3>
     <div class="row">
@@ -728,11 +728,11 @@ function viewRules(){
 
   <h3>4. The money (three games at once)</h3>
   <ul>
-    <li><b>Weekly purse:</b> everyone in the round buys in (currently ${money(S.settings.buyIn)}). ${S.settings.rakePct>0?`${S.settings.rakePct}% is pulled into the season prize pool; the rest`:'The pot'} pays out by finish vs. quota — currently <b>${s_purseLabel()}</b>.</li>
+    <li><b>Weekly purse:</b> everyone in the round buys in (currently ${money(S.settings.buyIn)}). ${S.settings.rakeFlat>0?`${money(S.settings.rakeFlat)} is pulled into the season prize pool; the rest`:'The pot'} pays out by finish vs. quota — currently <b>${s_purseLabel()}</b>.</li>
     <li><b>Skins:</b> a separate <b>opt-in</b> game (currently ${S.settings.skinsBuyIn>0?money(S.settings.skinsBuyIn)+' buy-in':'off'}). Only players who opt in that round pay in and can win — if you don't opt in, you can't win a skin. Low score on a hole wins it; ties carry to the next hole; the pot splits evenly across all skins won.</li>
     <li><b>Season points:</b> each round awards points by finish position (${S.settings.seasonPoints.join('-')}…, then 1). These accumulate all season for the overall individual title.</li>
     <li><b>Team battle:</b> every player is on <b>${S.settings.team1Name||'Team 1'}</b> or <b>${S.settings.team2Name||'Team 2'}</b>. Those same season points also sum by team into a season-long Team vs Team battle, shown at the top of the Standings page. Set each player's team on the Players tab.</li>
-    <li><b>Season prize pool:</b> a ${money(S.settings.seasonBuyIn)} buy-in per player at season start, plus ${S.settings.rakePct}% of every weekly purse, builds one big end-of-season pot (shown on the Standings page).</li>
+    <li><b>Season prize pool:</b> a ${money(S.settings.seasonBuyIn)} buy-in per player at season start, plus ${money(S.settings.rakeFlat)} from every weekly purse, builds one big end-of-season pot (shown on the Standings page).</li>
   </ul>
 
   <h3>Playing 9 holes &amp; combining nines</h3>
@@ -791,7 +791,7 @@ function updGross(rid,pid,h,v){ const rd=S.rounds.find(x=>x.id===rid); const e=r
 function toggleSkins(rid,pid,checked){ const rd=S.rounds.find(x=>x.id===rid); const e=rd&&rd.entries.find(x=>x.playerId===pid); if(!e)return; e.skinsIn=!!checked; save(); render(); }
 
 function updSetting(k,v){
-  if(["buyIn","skinsBuyIn","quotaCap","rollingWindow","seasonBuyIn","rakePct"].includes(k)) v=parseFloat(v)||0;
+  if(["buyIn","skinsBuyIn","quotaCap","rollingWindow","seasonBuyIn","rakePct","rakeFlat"].includes(k)) v=parseFloat(v)||0;
   S.settings[k]=v; save(); render();
 }
 function updSeasonPoints(v){
