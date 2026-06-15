@@ -113,7 +113,7 @@ const DEFAULT_SETTINGS = {
   skinsType:"gross",        // gross | net  (net subtracts handicap strokes by hole index)
   purseMode:"top3",         // top3 | beatquota | winnertakeall
   quotaCap:36,              // quota = quotaCap - handicap
-  seasonPoints:[10,8,6,5,4,3,2,1], // season points by finish position; beyond list => 1
+  seasonPoints:[100,90,80,70,65,60,55,50,45,40,35,30,25,20,15,10,5], // 100-90-80-70 then by 5s; beyond list = lowest
   rollingWindow:0,          // 0 = static 36-HC quota; >0 = avg of last N point totals (when available)
   team1Name:"Team 1",
   team2Name:"Team 2"
@@ -179,9 +179,20 @@ function quotaFor(player, beforeRoundIndex){
 }
 
 /* ---- default quota (9-hole rounds get half) ---- */
-function defaultQuota(player, roundIndex, holes){
-  const base = quotaFor(player, roundIndex);
+function defaultQuota(player, roundIndex, holes, course, tee){
+  let base;
+  if(course && tee){
+    const ch = courseHandicap(player.handicap, course, tee);
+    base = Math.max(0, S.settings.quotaCap - (ch!=null ? ch : Math.round(player.handicap)));
+  } else {
+    base = quotaFor(player, roundIndex);   // fallback: quotaCap - Index
+  }
   return holes===9 ? Math.round(base/2) : base;
+}
+// Auto-set every entry's quota for a round from each player's handicap + the round's tee.
+function recalcQuotas(rd){
+  const co=getCourse(rd.courseId), tee=getTee(co, rd.tee), nH=Number(rd.holes)||18, idx=S.rounds.indexOf(rd);
+  rd.entries.forEach(e=>{ const p=S.players.find(x=>x.id===e.playerId); if(p) e.quota = defaultQuota(p, idx, nH, co, tee); });
 }
 /* ---- course helpers ---- */
 function getCourse(id){ return (S.courses||[]).find(c=>c.id===id); }
@@ -198,7 +209,7 @@ function rankAndAward(scored){
   let pos=0,last=null,seen=0;
   scored.forEach(r=>{ seen++; if(r.diff!==last){ pos=seen; last=r.diff; } r.pos=pos; });
   const table=S.settings.seasonPoints;
-  const ptAt=i=> i<table.length ? table[i] : 1;
+  const ptAt=i=> i<table.length ? table[i] : (table.length ? table[table.length-1] : 0);
   const groups={};
   scored.forEach(r=> (groups[r.pos]=groups[r.pos]||[]).push(r));
   Object.keys(groups).forEach(k=>{
@@ -255,7 +266,7 @@ function calcRound(round, roundIndex){
     .map(e=>{
       const p = S.players.find(x=>x.id===e.playerId);
       if(!p) return null;
-      const quota = (e.quota!=null && e.quota!=="") ? Number(e.quota) : defaultQuota(p, roundIndex, nHoles);
+      const quota = (e.quota!=null && e.quota!=="") ? Number(e.quota) : defaultQuota(p, roundIndex, nHoles, course, tee);
       const hasPts = e.points!=null && e.points!=="";
       const points = hasPts ? Number(e.points) : null;
       return {
@@ -515,7 +526,8 @@ function roundEditor(rd,i,c){
       ${others.map(o=>`<option value="${o.id}" ${rd.pairWith===o.id?'selected':''}>${o.date||'Round'}${o.course?' · '+o.course:''}</option>`).join('')}
       </select></div></div>`;
   }
-  h+=`<div class="note">Quota = ${nHoles===9?'½ × ('+S.settings.quotaCap+' − handicap)':S.settings.quotaCap+' − handicap'} (auto-filled, editable per round). Enter each player's Stableford <b>points</b>. ${mode==='holes'?'Hole-by-hole gross scores feed the skins game and auto-sum is shown.':'Switch to <b>Hole-by-hole</b> to also run skins.'}${nHoles===9?' This is a <b>9-hole</b> round.':''}</div>`;
+  const quotaDesc = (rc && rtee) ? `${S.settings.quotaCap} − Course Handicap (Index adjusted for the ${rd.tee} tee, ${rtee.rating}/${rtee.slope})` : `${S.settings.quotaCap} − Index`;
+  h+=`<div class="note">Quota = ${nHoles===9?'½ × ('+quotaDesc+')':quotaDesc} — auto-calculated from each player's handicap and the selected tee, and recalculated when you change the tee. Editable per round.${nHoles===9?' <b>9-hole</b> round (half quota).':''} ${mode==='holes'?'Hole-by-hole gross scores feed the skins game.':'Switch to <b>Hole-by-hole</b> to also run skins.'}</div>`;
   if(rc) h+=`<div class="note">${rc.name}${rd.tee?` · <b>${rd.tee}</b> tee`:''}${rtee?` · rating ${rtee.rating} / slope ${rtee.slope} · ${rtee.yards} yds`:''} · par ${rc.par}. Pars &amp; stroke index show on the hole grid; in Hole-by-hole you can auto-fill points from scores.</div>`;
 
   if(mode==="points"){
@@ -642,7 +654,7 @@ function viewSettings(){
       </select></div>
     </div>
     <h3>Season points by finish</h3>
-    <div class="row"><div style="flex:3"><label>Points for 1st, 2nd, 3rd… (comma separated; everyone else gets 1)</label>
+    <div class="row"><div style="flex:3"><label>Points for 1st, 2nd, 3rd… (comma separated; places beyond the list get the last value)</label>
       <input value="${s.seasonPoints.join(', ')}" onchange="updSeasonPoints(this.value)"></div></div>
     <div class="card" style="background:var(--panel2);margin-top:18px">
       <h3 style="margin-top:0">Data</h3>
@@ -724,12 +736,16 @@ function delPlayer(id){ if(!confirm("Remove this player and their scores?"))retu
 
 function newRound(){
   const today=new Date().toISOString().slice(0,10);
-  S.rounds.push({id:uid(),date:today,course:"",holes:18,pairWith:"",entryMode:"points",
-    entries:S.players.map(p=>({playerId:p.id,points:"",quota:"",gross:Array(18).fill("")}))});
+  const co = S.courses && S.courses[0];
+  const teeName = co ? ((co.tees.find(t=>t.name==="White")||co.tees[0]||{}).name||"") : "";
+  const rd={id:uid(),date:today,course:co?co.name:"",courseId:co?co.id:"",tee:teeName,holes:18,pairWith:"",entryMode:"points",
+    entries:S.players.map(p=>({playerId:p.id,points:"",quota:"",gross:Array(18).fill("")}))};
+  S.rounds.push(rd);
+  recalcQuotas(rd);   // auto-calc quotas from handicap + tee on creation
   save(); go('rounds');
 }
-function updRound(id,f,v){ const rd=S.rounds.find(x=>x.id===id); if(!rd)return; rd[f]=v; save(); render(); }
-function setRoundCourse(rid,cid){ const rd=S.rounds.find(x=>x.id===rid); if(!rd)return; rd.courseId=cid||""; const co=getCourse(cid); rd.course=co?co.name:""; if(co && !getTee(co,rd.tee)) rd.tee=co.tees[0]?co.tees[0].name:""; save(); render(); }
+function updRound(id,f,v){ const rd=S.rounds.find(x=>x.id===id); if(!rd)return; rd[f]=v; if(f==='tee'||f==='holes') recalcQuotas(rd); save(); render(); }
+function setRoundCourse(rid,cid){ const rd=S.rounds.find(x=>x.id===rid); if(!rd)return; rd.courseId=cid||""; const co=getCourse(cid); rd.course=co?co.name:""; if(co && !getTee(co,rd.tee)) rd.tee=co.tees[0]?co.tees[0].name:""; recalcQuotas(rd); save(); render(); }
 function fillPoints(rid){ const rd=S.rounds.find(x=>x.id===rid); if(!rd)return; const co=getCourse(rd.courseId); if(!co){ alert("Pick a course first."); return; } const nH=Number(rd.holes)||18; let filled=0; rd.entries.forEach(e=>{ const g=e.gross||[]; if(g.slice(0,nH).some(x=>x===""||x==null)) return; let pts=0; for(let hh=0;hh<nH;hh++) pts+=stablefordPts(g[hh], co.holesPar[hh]); e.points=pts; filled++; }); save(); render(); alert(filled?`Filled gross Stableford points for ${filled} player(s).`:"No players have a full set of hole scores yet."); }
 function delRound(id){ if(!confirm("Delete this round?"))return; S.rounds=S.rounds.filter(r=>r.id!==id); save(); render(); }
 function updEntry(rid,pid,f,v){ const rd=S.rounds.find(x=>x.id===rid); const e=rd.entries.find(x=>x.playerId===pid);
