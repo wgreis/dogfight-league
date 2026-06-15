@@ -118,7 +118,10 @@ const DEFAULT_SETTINGS = {
   team1Name:"Team 1",
   team2Name:"Team 2",
   seasonBuyIn:100,          // season-long prize buy-in per player
-  rakeFlat:20              // flat $ pulled from each weekly purse into the season prize pool
+  rakeFlat:20,             // flat $ pulled from each weekly purse into the season prize pool
+  seasonStart:"2026-07-01",// rounds on/after this date count toward the season
+  minMatches:12,           // each player must play at least this many matches
+  countBest:12             // only each player's best N round scores count toward standings/team battle
 };
 const PINE_TREE = {
   id:"pinetree", name:"Pine Tree Golf & Country Club", location:"Birmingham, AL", par:72,
@@ -162,6 +165,7 @@ function save(){
 function uid(){ return Math.random().toString(36).slice(2,9); }
 function money(n){ return "$"+ (Math.round(n*100)/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2}); }
 function signed(n){ return (n>0?"+":"") + n; }
+function fmtDate(d){ if(!d) return ""; const t=new Date(d+"T00:00:00"); return isNaN(t)?d:t.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); }
 
 /* ============================ QUOTA ============================ */
 // Default quota for a player given their handicap (and optional rolling window over prior rounds)
@@ -238,7 +242,7 @@ function combinedEvent(a,b,ia,ib){
     if(ra&&rb) out.push({playerId:p.id,name:p.name,quota:ra.quota+rb.quota,points:ra.points+rb.points,diff:ra.diff+rb.diff,hasPts:true});
   });
   rankAndAward(out);
-  return {combined:true, a, b, rows:out};
+  return {combined:true, a, b, rows:out, date:a.date};
 }
 /* ---- season events: paired nines collapse to a single 18 ---- */
 function seasonEvents(){
@@ -255,7 +259,7 @@ function seasonEvents(){
       return;
     }
     used.add(rd.id);
-    events.push({single:true, rows:calcRound(rd,i).rows.filter(r=>r.hasPts)});
+    events.push({single:true, rows:calcRound(rd,i).rows.filter(r=>r.hasPts), date:rd.date});
   });
   return events;
 }
@@ -353,15 +357,27 @@ function calcRound(round, roundIndex){
 
 /* ============================ SEASON CALC ============================ */
 function calcSeason(){
+  const start=S.settings.seasonStart||"";
+  const N=Number(S.settings.countBest||0); const useBest=N>0;
+  const inSeason = rd => !start || !rd.date || rd.date>=start;
   const agg={};
   S.players.forEach(p=> agg[p.id]={playerId:p.id,name:p.name,handicap:p.handicap,team:p.team||1,
-    rounds:0,seasonPts:0,totalDiff:0,best:null,wins:0,purse:0,skins:0});
-  // money settles per round (each nine is its own game)
-  S.rounds.forEach((rd,i)=>{ const c=calcRound(rd,i); c.rows.forEach(r=>{ if(!r.hasPts) return; const a=agg[r.playerId]; if(a){ a.purse+=r.purse||0; a.skins+=r.skinsMoney||0; } }); });
-  // standings settle per event (two linked nines = one 18)
-  seasonEvents().forEach(ev=>{ ev.rows.forEach(r=>{ const a=agg[r.playerId]; if(!a) return; a.rounds++; a.seasonPts+=r.seasonPts||0; a.totalDiff+=r.diff; a.best=a.best==null?r.diff:Math.max(a.best,r.diff); if(r.pos===1) a.wins++; }); });
-  const arr=Object.values(agg).map(a=>({...a, money:a.purse+a.skins,
-    avgDiff: a.rounds? Math.round(a.totalDiff/a.rounds*10)/10 : 0}));
+    rounds:0,seasonPts:0,totalDiff:0,best:null,wins:0,purse:0,skins:0,results:[]});
+  // money settles per round (season-dated rounds only)
+  S.rounds.forEach((rd,i)=>{ if(!inSeason(rd)) return; const c=calcRound(rd,i); c.rows.forEach(r=>{ if(!r.hasPts) return; const a=agg[r.playerId]; if(a){ a.purse+=r.purse||0; a.skins+=r.skinsMoney||0; } }); });
+  // standings settle per event (linked nines = one 18); only best-N scores count
+  seasonEvents().forEach(ev=>{ if(start && ev.date && ev.date<start) return; ev.rows.forEach(r=>{ const a=agg[r.playerId]; if(!a) return; a.rounds++; a.results.push({pts:r.seasonPts||0, diff:r.diff}); a.best=a.best==null?r.diff:Math.max(a.best,r.diff); if(r.pos===1) a.wins++; }); });
+  const arr=Object.values(agg).map(a=>{
+    const sorted=[...a.results].sort((x,y)=> y.pts-x.pts || y.diff-x.diff);
+    const counted = useBest? sorted.slice(0,N) : sorted;
+    a.counted=counted.length; a.dropped=a.rounds-counted.length;
+    a.seasonPts=Math.round(counted.reduce((s,r)=>s+r.pts,0)*10)/10;
+    a.totalDiff=counted.reduce((s,r)=>s+r.diff,0);
+    a.avgDiff=counted.length?Math.round(a.totalDiff/counted.length*10)/10:0;
+    a.money=a.purse+a.skins;
+    a.eligible = a.rounds >= Number(S.settings.minMatches||0);
+    return a;
+  });
   arr.sort((x,y)=> y.seasonPts-x.seasonPts || y.totalDiff-x.totalDiff || y.wins-x.wins);
   let pos=0,last=null,seen=0;
   arr.forEach(a=>{ seen++; if(a.seasonPts!==last){pos=seen;last=a.seasonPts;} a.pos=a.rounds?pos:"—"; });
@@ -444,15 +460,15 @@ function viewDashboard(){
       <button class="btn" onclick="go('players')">Add Players</button></div></div>`;
     return html;
   }
-  html+=`<div class="card"><h2>Leaderboard</h2><div class="sub">Ranked by season points. Tiebreak: total +/- vs quota, then wins.</div>
-    <table><thead><tr><th class="pos">#</th><th>Player</th><th class="num">Rnds</th>
+  html+=`<div class="card"><h2>Leaderboard</h2><div class="sub">Ranked by season points (best ${S.settings.countBest} rounds). Tiebreak: total +/-, then wins.</div>
+    <table><thead><tr><th class="pos">#</th><th>Player</th><th class="num">Matches</th>
     <th class="num">Season Pts</th><th class="num">Total +/-</th><th class="num">Avg</th>
     <th class="num">Wins</th><th class="num">$ Won</th></tr></thead><tbody>`;
   season.forEach(s=>{
     const dim = s.rounds? "" : "style='opacity:.45'";
     html+=`<tr ${dim} ${s.pos===1?'class="winner"':''}>
       <td class="pos">${s.pos}</td><td><b>${s.name}</b> <span class="muted hsmall">(${s.handicap}) · ${(s.team===2?(S.settings.team2Name||'Team 2'):(S.settings.team1Name||'Team 1'))}</span></td>
-      <td class="num">${s.rounds}</td>
+      <td class="num" style="${(!s.eligible&&s.rounds>0)?'color:var(--bad)':''}" title="${s.dropped>0?'best '+s.counted+' of '+s.rounds+' count':(s.rounds+' played')}">${s.rounds}${s.dropped>0?` <span class="hsmall muted">(top ${s.counted})</span>`:''}</td>
       <td class="num"><b>${s.seasonPts}</b></td>
       <td class="num ${s.totalDiff>=0?'plus':'minus'}">${signed(s.totalDiff)}</td>
       <td class="num">${s.rounds?signed(s.avgDiff):'—'}</td>
@@ -460,7 +476,7 @@ function viewDashboard(){
       <td class="num money">${money(s.money)}</td></tr>`;
   });
   html+=`</tbody></table>
-    <div class="note">Season points are awarded by finish position each round (default 10-8-6-5-4-3-2-1, then 1 for everyone else). Change the schedule in <b>Settings</b>.</div></div>`;
+    <div class="note">Each player's <b>best ${S.settings.countBest}</b> rounds count toward standings &amp; the team battle (extras dropped). <b>${S.settings.minMatches}-match minimum</b> to qualify — anyone under shows in red. Counting rounds from <b>${fmtDate(S.settings.seasonStart)||'season start'}</b> onward. Edit in <b>Settings</b>.</div></div>`;
 
   // last round recap
   if(S.rounds.length){
@@ -678,6 +694,12 @@ function viewSettings(){
       <div><label>Season buy-in per player ($)</label><input type="number" value="${s.seasonBuyIn}" onchange="updSetting('seasonBuyIn',this.value)"></div>
       <div><label>Rake to season pool per round ($)</label><input type="number" value="${s.rakeFlat}" onchange="updSetting('rakeFlat',this.value)"></div>
     </div>
+    <h3>Season rules</h3>
+    <div class="row">
+      <div><label>Season start date</label><input type="date" value="${s.seasonStart||''}" onchange="updSetting('seasonStart',this.value)"></div>
+      <div><label>Minimum matches per player</label><input type="number" value="${s.minMatches}" onchange="updSetting('minMatches',this.value)"></div>
+      <div><label>Top scores counted</label><input type="number" value="${s.countBest}" onchange="updSetting('countBest',this.value)"></div>
+    </div>
     <h3>Skins</h3>
     <div class="row">
       <div><label>Skins buy-in per player ($, 0 = off)</label><input type="number" value="${s.skinsBuyIn}" onchange="updSetting('skinsBuyIn',this.value)"></div>
@@ -733,6 +755,7 @@ function viewRules(){
     <li><b>Season points:</b> each round awards points by finish position (${S.settings.seasonPoints.join('-')}…, then 1). These accumulate all season for the overall individual title.</li>
     <li><b>Team battle:</b> every player is on <b>${S.settings.team1Name||'Team 1'}</b> or <b>${S.settings.team2Name||'Team 2'}</b>. Those same season points also sum by team into a season-long Team vs Team battle, shown at the top of the Standings page. Set each player's team on the Players tab.</li>
     <li><b>Season prize pool:</b> a ${money(S.settings.seasonBuyIn)} buy-in per player at season start, plus ${money(S.settings.rakeFlat)} from every weekly purse, builds one big end-of-season pot (shown on the Standings page).</li>
+    <li><b>Season format:</b> the season runs from <b>${fmtDate(S.settings.seasonStart)}</b>; each player must play at least <b>${S.settings.minMatches} matches</b>, and only their <b>best ${S.settings.countBest} scores</b> count toward the individual standings and the team battle.</li>
   </ul>
 
   <h3>Playing 9 holes &amp; combining nines</h3>
@@ -791,7 +814,7 @@ function updGross(rid,pid,h,v){ const rd=S.rounds.find(x=>x.id===rid); const e=r
 function toggleSkins(rid,pid,checked){ const rd=S.rounds.find(x=>x.id===rid); const e=rd&&rd.entries.find(x=>x.playerId===pid); if(!e)return; e.skinsIn=!!checked; save(); render(); }
 
 function updSetting(k,v){
-  if(["buyIn","skinsBuyIn","quotaCap","rollingWindow","seasonBuyIn","rakePct","rakeFlat"].includes(k)) v=parseFloat(v)||0;
+  if(["buyIn","skinsBuyIn","quotaCap","rollingWindow","seasonBuyIn","rakePct","rakeFlat","minMatches","countBest"].includes(k)) v=parseFloat(v)||0;
   S.settings[k]=v; save(); render();
 }
 function updSeasonPoints(v){

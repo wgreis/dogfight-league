@@ -36,7 +36,7 @@ const DATA_FILE = path.join(DATA_DIR, "league.json");
 const SEED = {
   settings: {
     leagueName: "Dogfight League", buyIn: 20, skinsBuyIn: 5, skinsType: "gross",
-    purseMode: "top3", quotaCap: 36, seasonPoints: [100, 90, 80, 70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5], rollingWindow: 0
+    purseMode: "top3", quotaCap: 36, seasonPoints: [100, 90, 80, 70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5], rollingWindow: 0, seasonStart: "2026-07-01", minMatches: 12, countBest: 12
   },
   players: [], rounds: []
 };
