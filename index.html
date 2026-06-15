@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dogfight League Tracker</title>
+<style>
+  :root{
+    --bg:#0f1b14; --panel:#16271c; --panel2:#1d3326; --line:#2c4a37;
+    --ink:#eaf3ec; --muted:#9bb6a4; --accent:#3fbf6f; --accent2:#f2c14e;
+    --good:#3fbf6f; --bad:#e5736b; --chip:#234032;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%}
+  header{background:linear-gradient(135deg,#173d27,#0f1b14);padding:18px 16px;border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:20}
+  .brand{display:flex;align-items:center;gap:10px;max-width:1100px;margin:0 auto}
+  .brand h1{font-size:20px;margin:0;letter-spacing:.5px}
+  .brand .tag{color:var(--muted);font-size:12px}
+  .flag{font-size:24px}
+  nav{display:flex;gap:4px;overflow-x:auto;background:var(--panel);border-bottom:1px solid var(--line);
+    position:sticky;top:62px;z-index:19;padding:0 8px}
+  nav button{background:none;border:none;color:var(--muted);padding:14px 14px;font-size:14px;font-weight:600;
+    cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent}
+  nav button.active{color:var(--ink);border-bottom-color:var(--accent)}
+  main{max-width:1100px;margin:0 auto;padding:18px 14px 80px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:16px}
+  .card .sub{color:var(--muted);font-size:13px;margin-bottom:12px}
+  h3{font-size:14px;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:none}
+  .pos{width:34px;color:var(--muted);font-weight:700}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700}
+  .plus{color:var(--good)} .minus{color:var(--bad)}
+  .pill.good{background:rgba(63,191,111,.16);color:var(--good)}
+  .pill.bad{background:rgba(229,115,107,.16);color:var(--bad)}
+  .money{color:var(--accent2);font-weight:700;font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)}
+  input,select{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:9px;
+    padding:9px 10px;font-size:14px;width:100%}
+  input:focus,select:focus{outline:none;border-color:var(--accent)}
+  label{display:block;font-size:12px;color:var(--muted);margin:0 0 5px;font-weight:600}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row > div{flex:1;min-width:120px}
+  button.btn{background:var(--accent);color:#07140c;border:none;border-radius:9px;padding:10px 16px;
+    font-size:14px;font-weight:700;cursor:pointer}
+  button.btn.alt{background:var(--chip);color:var(--ink)}
+  button.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  button.btn.danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+  button.mini{background:var(--chip);color:var(--ink);border:none;border-radius:7px;padding:5px 9px;
+    font-size:12px;font-weight:700;cursor:pointer}
+  button.mini.del{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+  .grid-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .stat .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  .stat .v{font-size:24px;font-weight:800;margin-top:4px}
+  .stat .v small{font-size:13px;color:var(--muted);font-weight:600}
+  .empty{color:var(--muted);text-align:center;padding:30px 10px;font-size:14px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .toolbar .spacer{flex:1}
+  details.round{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+  details.round>summary{padding:14px 16px;cursor:pointer;font-weight:700;display:flex;justify-content:space-between;
+    align-items:center;list-style:none}
+  details.round>summary::-webkit-details-marker{display:none}
+  details.round>summary .meta{color:var(--muted);font-weight:500;font-size:13px}
+  .round-body{padding:0 14px 14px}
+  .scoregrid input{padding:7px 6px;text-align:center}
+  .hsmall{font-size:11px}
+  .note{background:var(--panel2);border-left:3px solid var(--accent);padding:10px 12px;border-radius:0 8px 8px 0;
+    color:var(--muted);font-size:13px;margin:10px 0;line-height:1.5}
+  .rules p{line-height:1.6;color:#d7e6db}
+  .rules li{line-height:1.6;margin-bottom:8px;color:#d7e6db}
+  .winner{background:rgba(242,193,78,.10)}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-start;
+    justify-content:center;z-index:50;padding:24px 12px;overflow:auto}
+  .modal-bg.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:680px;width:100%;padding:20px}
+  .modal h2{margin-top:0}
+  .seg{display:inline-flex;background:var(--panel2);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{background:none;border:none;color:var(--muted);padding:8px 12px;font-weight:700;cursor:pointer;font-size:13px}
+  .seg button.on{background:var(--accent);color:#07140c}
+  .hide{display:none!important}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:30px;line-height:1.6}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="flag">🏌️</span>
+    <div>
+      <h1 id="leagueName">Dogfight League</h1>
+      <div class="tag">Quota points • Weekly purse • Skins • Season standings</div>
+    </div>
+  </div>
+</header>
+<nav id="nav"></nav>
+<main id="view"></main>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+
+<script>
+/* ============================ STATE ============================ */
+const DEFAULT_SETTINGS = {
+  leagueName:"Dogfight League",
+  buyIn:20,                 // weekly purse buy-in per player ($)
+  skinsBuyIn:5,             // skins buy-in per player ($) — 0 to disable
+  skinsType:"gross",        // gross | net  (net subtracts handicap strokes by hole index)
+  purseMode:"top3",         // top3 | beatquota | winnertakeall
+  quotaCap:36,              // quota = quotaCap - handicap
+  seasonPoints:[10,8,6,5,4,3,2,1], // season points by finish position; beyond list => 1
+  rollingWindow:0,          // 0 = static 36-HC quota; >0 = avg of last N point totals (when available)
+  team1Name:"Team 1",
+  team2Name:"Team 2"
+};
+const SEED = {
+  settings:{...DEFAULT_SETTINGS},
+  players:[],
+  rounds:[]
+};
+let S = JSON.parse(JSON.stringify(SEED));
+let activeTab = "dashboard";
+let saveTimer=null;
+
+// Load from the server (shared data). Falls back to a local cache if offline.
+async function init(){
+  try{
+    const r = await fetch("/api/data");
+    if(r.ok){ const o = await r.json(); if(o && o.players){ o.settings={...DEFAULT_SETTINGS,...o.settings}; S=o; } }
+  }catch(e){
+    try{ const raw=localStorage.getItem("dogfightLeague"); if(raw){ const o=JSON.parse(raw); o.settings={...DEFAULT_SETTINGS,...o.settings}; S=o; } }catch(_){}
+  }
+  render();
+}
+// Save: cache locally immediately, push to server (debounced).
+function save(){
+  try{ localStorage.setItem("dogfightLeague", JSON.stringify(S)); }catch(e){}
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{
+    fetch("/api/data",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(S)}).catch(()=>{});
+  },400);
+}
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function money(n){ return "$"+ (Math.round(n*100)/100).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function signed(n){ return (n>0?"+":"") + n; }
+
+/* ============================ QUOTA ============================ */
+// Default quota for a player given their handicap (and optional rolling window over prior rounds)
+function quotaFor(player, beforeRoundIndex){
+  const cap = S.settings.quotaCap;
+  const win = S.settings.rollingWindow;
+  if(!win) return Math.max(0, cap - Math.round(player.handicap));
+  // rolling: average of player's most recent `win` point totals from rounds before this one
+  const pts=[];
+  const rounds = S.rounds.slice(0, beforeRoundIndex===undefined ? S.rounds.length : beforeRoundIndex);
+  for(let i=rounds.length-1;i>=0 && pts.length<win;i--){
+    const e = rounds[i].entries.find(x=>x.playerId===player.id && x.points!=null && x.points!=="");
+    if(e) pts.push(Number(e.points));
+  }
+  if(pts.length===0) return Math.max(0, cap - Math.round(player.handicap)); // fallback until data exists
+  return Math.round(pts.reduce((a,b)=>a+b,0)/pts.length);
+}
+
+/* ---- default quota (9-hole rounds get half) ---- */
+function defaultQuota(player, roundIndex, holes){
+  const base = quotaFor(player, roundIndex);
+  return holes===9 ? Math.round(base/2) : base;
+}
+/* ---- rank scored rows by diff, award season points (ties shared) ---- */
+function rankAndAward(scored){
+  scored.sort((a,b)=> b.diff - a.diff);
+  let pos=0,last=null,seen=0;
+  scored.forEach(r=>{ seen++; if(r.diff!==last){ pos=seen; last=r.diff; } r.pos=pos; });
+  const table=S.settings.seasonPoints;
+  const ptAt=i=> i<table.length ? table[i] : 1;
+  const groups={};
+  scored.forEach(r=> (groups[r.pos]=groups[r.pos]||[]).push(r));
+  Object.keys(groups).forEach(k=>{
+    const grp=groups[k]; const startIdx=Number(k)-1;
+    let sum=0; for(let i=0;i<grp.length;i++) sum+=ptAt(startIdx+i);
+    const each=Math.round((sum/grp.length)*10)/10;
+    grp.forEach(r=> r.seasonPts=each);
+  });
+  return groups;
+}
+/* ---- a round's combine partner (pairing is symmetric) ---- */
+function partnerOf(rd){
+  if(rd.pairWith) return rd.pairWith;
+  const o=S.rounds.find(r=>r.pairWith===rd.id);
+  return o ? o.id : "";
+}
+/* ---- combine two 9-hole rounds into one 18-hole event ---- */
+function combinedEvent(a,b,ia,ib){
+  const ca=calcRound(a,ia), cb=calcRound(b,ib);
+  const out=[];
+  S.players.forEach(p=>{
+    const ra=ca.rows.find(x=>x.playerId===p.id && x.hasPts);
+    const rb=cb.rows.find(x=>x.playerId===p.id && x.hasPts);
+    if(ra&&rb) out.push({playerId:p.id,name:p.name,quota:ra.quota+rb.quota,points:ra.points+rb.points,diff:ra.diff+rb.diff,hasPts:true});
+  });
+  rankAndAward(out);
+  return {combined:true, a, b, rows:out};
+}
+/* ---- season events: paired nines collapse to a single 18 ---- */
+function seasonEvents(){
+  const partner={};
+  S.rounds.forEach(rd=>{ if(rd.pairWith){ const o=S.rounds.find(r=>r.id===rd.pairWith); if(o){ partner[rd.id]=o.id; partner[o.id]=rd.id; } } });
+  const used=new Set(); const events=[];
+  S.rounds.forEach((rd,i)=>{
+    if(used.has(rd.id)) return;
+    const pid=partner[rd.id];
+    if(pid && !used.has(pid)){
+      const j=S.rounds.findIndex(r=>r.id===pid);
+      used.add(rd.id); used.add(pid);
+      events.push(combinedEvent(rd, S.rounds[j], i, j));
+      return;
+    }
+    used.add(rd.id);
+    events.push({single:true, rows:calcRound(rd,i).rows.filter(r=>r.hasPts)});
+  });
+  return events;
+}
+
+/* ============================ ROUND CALC ============================ */
+function calcRound(round, roundIndex){
+  const nHoles = Number(round.holes)||18;
+  let rows = round.entries
+    .map(e=>{
+      const p = S.players.find(x=>x.id===e.playerId);
+      if(!p) return null;
+      const quota = (e.quota!=null && e.quota!=="") ? Number(e.quota) : defaultQuota(p, roundIndex, nHoles);
+      const hasPts = e.points!=null && e.points!=="";
+      const points = hasPts ? Number(e.points) : null;
+      return {
+        playerId:p.id, name:p.name, handicap:p.handicap,
+        quota, points, hasPts,
+        diff: hasPts ? points - quota : null,
+        gross: (e.gross||[]).slice(0,nHoles).map(g=> (g===""||g==null)?null:Number(g))
+      };
+    }).filter(Boolean);
+
+  // RANK + season points
+  const scored = rows.filter(r=>r.hasPts);
+  const groups = rankAndAward(scored);
+
+  // PURSE
+  const field = scored.length;
+  const pot = field * Number(S.settings.buyIn||0);
+  scored.forEach(r=> r.purse=0);
+  if(pot>0 && field>0){
+    const mode=S.settings.purseMode;
+    if(mode==="winnertakeall"){
+      const winners=groups[1]||[]; winners.forEach(r=> r.purse = pot/winners.length);
+    } else if(mode==="beatquota"){
+      const win = scored.filter(r=>r.diff>0); // beat quota (strictly positive)
+      if(win.length) win.forEach(r=> r.purse = pot/win.length);
+      else { const w=groups[1]||[]; w.forEach(r=> r.purse=pot/w.length); } // nobody beat quota -> top finisher
+    } else { // top3 -> 50/30/20 across distinct positions 1,2,3 (split within ties)
+      const split=[0.5,0.3,0.2];
+      [1,2,3].forEach((p,idx)=>{ const g=groups[p]; if(g&&g.length) g.forEach(r=> r.purse += pot*split[idx]/g.length); });
+      // if fewer than 3 distinct positions exist, redistribute leftover to winner
+      const paid=scored.reduce((a,r)=>a+r.purse,0);
+      if(paid < pot-0.001){ const w=groups[1]||[]; const left=pot-paid; w.forEach(r=> r.purse += left/w.length); }
+    }
+  }
+
+  // SKINS (per hole low score; ties carry over; net optional)
+  const skinsBuyIn=Number(S.settings.skinsBuyIn||0);
+  const withGross = rows.filter(r=> r.gross.length===nHoles && r.gross.every(g=>g!=null));
+  let skinsDetail=[]; let skinsPot=0;
+  rows.forEach(r=> r.skinsWon=0);
+  if(skinsBuyIn>0 && withGross.length>=2){
+    skinsPot = withGross.length * skinsBuyIn;
+    let carry=0;
+    for(let h=0;h<nHoles;h++){
+      // net: subtract a stroke on holes where index <= playerStrokes. We approximate stroke index = hole order?
+      // Use simple net: strokes spread across hardest holes by handicap; we use hole number ordering as index 1..18.
+      const vals = withGross.map(r=>{
+        let g = r.gross[h];
+        if(S.settings.skinsType==="net"){
+          const hc=Math.round(nHoles===9 ? r.handicap/2 : r.handicap);
+          const strokesThisHole = Math.floor(hc/nHoles) + ((h < (hc%nHoles))?1:0);
+          g = g - strokesThisHole;
+        }
+        return {r, g};
+      });
+      const min = Math.min(...vals.map(v=>v.g));
+      const low = vals.filter(v=>v.g===min);
+      if(low.length===1){
+        const skins = 1+carry; low[0].r.skinsWon += skins;
+        skinsDetail.push({hole:h+1, winner:low[0].r.name, score:min, skins});
+        carry=0;
+      } else { carry++; skinsDetail.push({hole:h+1, winner:"— tie (carry)", score:min, skins:0}); }
+    }
+    const totalSkins = withGross.reduce((a,r)=>a+r.skinsWon,0);
+    const per = totalSkins>0 ? skinsPot/totalSkins : 0;
+    rows.forEach(r=> r.skinsMoney = (r.skinsWon||0)*per);
+  } else {
+    rows.forEach(r=> r.skinsMoney=0);
+  }
+
+  // merge unscored rows back for display, then sort: scored by pos, then unscored
+  const byId={}; rows.forEach(r=> byId[r.playerId]=r);
+  scored.forEach(r=> Object.assign(byId[r.playerId], r));
+  const ordered = [...scored, ...rows.filter(r=>!r.hasPts)];
+  return {rows:ordered, pot, skinsPot, skinsDetail, field, perSkin: (skinsPot && ordered.reduce((a,r)=>a+(r.skinsWon||0),0))? skinsPot/ordered.reduce((a,r)=>a+(r.skinsWon||0),0):0};
+}
+
+/* ============================ SEASON CALC ============================ */
+function calcSeason(){
+  const agg={};
+  S.players.forEach(p=> agg[p.id]={playerId:p.id,name:p.name,handicap:p.handicap,team:p.team||1,
+    rounds:0,seasonPts:0,totalDiff:0,best:null,wins:0,purse:0,skins:0});
+  // money settles per round (each nine is its own game)
+  S.rounds.forEach((rd,i)=>{ const c=calcRound(rd,i); c.rows.forEach(r=>{ if(!r.hasPts) return; const a=agg[r.playerId]; if(a){ a.purse+=r.purse||0; a.skins+=r.skinsMoney||0; } }); });
+  // standings settle per event (two linked nines = one 18)
+  seasonEvents().forEach(ev=>{ ev.rows.forEach(r=>{ const a=agg[r.playerId]; if(!a) return; a.rounds++; a.seasonPts+=r.seasonPts||0; a.totalDiff+=r.diff; a.best=a.best==null?r.diff:Math.max(a.best,r.diff); if(r.pos===1) a.wins++; }); });
+  const arr=Object.values(agg).map(a=>({...a, money:a.purse+a.skins,
+    avgDiff: a.rounds? Math.round(a.totalDiff/a.rounds*10)/10 : 0}));
+  arr.sort((x,y)=> y.seasonPts-x.seasonPts || y.totalDiff-x.totalDiff || y.wins-x.wins);
+  let pos=0,last=null,seen=0;
+  arr.forEach(a=>{ seen++; if(a.seasonPts!==last){pos=seen;last=a.seasonPts;} a.pos=a.rounds?pos:"—"; });
+  return arr;
+}
+
+/* ============================ RENDER ============================ */
+const TABS=[["dashboard","Standings"],["rounds","Rounds & Scores"],["skins","Skins"],["players","Players"],["settings","Settings"],["rules","How It Works"]];
+function renderNav(){
+  document.getElementById("nav").innerHTML = TABS.map(([id,label])=>
+    `<button class="${activeTab===id?'active':''}" onclick="go('${id}')">${label}</button>`).join("");
+  document.getElementById("leagueName").textContent = S.settings.leagueName;
+  document.title = S.settings.leagueName;
+}
+function go(tab){ activeTab=tab; render(); window.scrollTo(0,0); }
+function render(){
+  renderNav();
+  const v=document.getElementById("view");
+  if(activeTab==="dashboard") v.innerHTML=viewDashboard();
+  else if(activeTab==="rounds") v.innerHTML=viewRounds();
+  else if(activeTab==="skins") v.innerHTML=viewSkins();
+  else if(activeTab==="players") v.innerHTML=viewPlayers();
+  else if(activeTab==="settings") v.innerHTML=viewSettings();
+  else if(activeTab==="rules") v.innerHTML=viewRules();
+}
+
+/* ---------- Team battle (season-long Team 1 vs Team 2) ---------- */
+function teamBattleCard(season){
+  const t={1:{name:S.settings.team1Name||'Team 1',pts:0,diff:0,money:0,n:0},
+           2:{name:S.settings.team2Name||'Team 2',pts:0,diff:0,money:0,n:0}};
+  season.forEach(s=>{ const k=s.team===2?2:1; t[k].pts+=s.seasonPts; t[k].diff+=s.totalDiff; t[k].money+=s.money; t[k].n++; });
+  const a=t[1], b=t[2], total=a.pts+b.pts, r=v=>Math.round(v*10)/10;
+  const aPct= total? Math.round(a.pts/total*100):50;
+  const lead = a.pts>b.pts? a.name+' leading' : (b.pts>a.pts? b.name+' leading' : 'All square');
+  return `<div class="card"><h2>Season Team Battle</h2><div class="sub">${lead} &bull; season-long points</div>
+    <div style="display:flex;gap:14px;margin:8px 0 12px">
+      <div class="stat" style="flex:1;${a.pts>=b.pts && total?'border-color:var(--accent)':''}"><div class="k">${a.name} <span class="hsmall">(${a.n})</span></div><div class="v">${r(a.pts)} <small>pts</small></div><div class="hsmall muted">${signed(r(a.diff))} +/- &bull; ${money(a.money)}</div></div>
+      <div class="stat" style="flex:1;${b.pts>a.pts?'border-color:var(--accent)':''}"><div class="k">${b.name} <span class="hsmall">(${b.n})</span></div><div class="v">${r(b.pts)} <small>pts</small></div><div class="hsmall muted">${signed(r(b.diff))} +/- &bull; ${money(b.money)}</div></div>
+    </div>
+    <div style="height:14px;border-radius:8px;overflow:hidden;display:flex;background:var(--panel2);border:1px solid var(--line)">
+      <div style="width:${aPct}%;background:var(--accent)"></div><div style="flex:1;background:var(--accent2)"></div></div>
+    <div style="display:flex;justify-content:space-between;margin-top:4px" class="hsmall muted"><span>${a.name} ${aPct}%</span><span>${b.name} ${100-aPct}%</span></div>
+  </div>`;
+}
+
+/* ---------- Dashboard / Season standings ---------- */
+function viewDashboard(){
+  const season=calcSeason();
+  const played=season.filter(s=>s.rounds>0);
+  const totalPot = S.rounds.reduce((a,rd,i)=> a+calcRound(rd,i).pot+calcRound(rd,i).skinsPot,0);
+  const leader = played[0];
+  let html=teamBattleCard(season)+`<div class="card"><h2>Season Standings</h2>
+    <div class="sub">${S.rounds.length} round${S.rounds.length!==1?'s':''} played • ${S.players.length} players • ${money(totalPot)} put in play</div>
+    <div class="grid-stats">
+      <div class="stat"><div class="k">Current Leader</div><div class="v">${leader?leader.name:"—"}</div></div>
+      <div class="stat"><div class="k">Leader's Pts</div><div class="v">${leader?leader.seasonPts:"—"} <small>season pts</small></div></div>
+      <div class="stat"><div class="k">Rounds Played</div><div class="v">${S.rounds.length}</div></div>
+      <div class="stat"><div class="k">Money in Play</div><div class="v money">${money(totalPot)}</div></div>
+    </div></div>`;
+
+  if(played.length===0){
+    html+=`<div class="card"><div class="empty">No scores yet. Add players, then create a round under <b>Rounds &amp; Scores</b>.<br><br>
+      <button class="btn" onclick="go('players')">Add Players</button></div></div>`;
+    return html;
+  }
+  html+=`<div class="card"><h2>Leaderboard</h2><div class="sub">Ranked by season points. Tiebreak: total +/- vs quota, then wins.</div>
+    <table><thead><tr><th class="pos">#</th><th>Player</th><th class="num">Rnds</th>
+    <th class="num">Season Pts</th><th class="num">Total +/-</th><th class="num">Avg</th>
+    <th class="num">Wins</th><th class="num">$ Won</th></tr></thead><tbody>`;
+  season.forEach(s=>{
+    const dim = s.rounds? "" : "style='opacity:.45'";
+    html+=`<tr ${dim} ${s.pos===1?'class="winner"':''}>
+      <td class="pos">${s.pos}</td><td><b>${s.name}</b> <span class="muted hsmall">(${s.handicap}) · ${(s.team===2?(S.settings.team2Name||'Team 2'):(S.settings.team1Name||'Team 1'))}</span></td>
+      <td class="num">${s.rounds}</td>
+      <td class="num"><b>${s.seasonPts}</b></td>
+      <td class="num ${s.totalDiff>=0?'plus':'minus'}">${signed(s.totalDiff)}</td>
+      <td class="num">${s.rounds?signed(s.avgDiff):'—'}</td>
+      <td class="num">${s.wins}</td>
+      <td class="num money">${money(s.money)}</td></tr>`;
+  });
+  html+=`</tbody></table>
+    <div class="note">Season points are awarded by finish position each round (default 10-8-6-5-4-3-2-1, then 1 for everyone else). Change the schedule in <b>Settings</b>.</div></div>`;
+
+  // last round recap
+  if(S.rounds.length){
+    const i=S.rounds.length-1; const rd=S.rounds[i]; const c=calcRound(rd,i);
+    html+=`<div class="card"><h2>Latest Round — ${rd.date||'Round '+(i+1)}</h2><div class="sub">${rd.course||''}</div>`;
+    html+=roundResultTable(c);
+    html+=`</div>`;
+  }
+  return html;
+}
+
+function combinedTable(ev){
+  if(!ev.rows.length) return `<div class="empty">Both nines need points from the same players to form an 18.</div>`;
+  let h=`<table><thead><tr><th class="pos">#</th><th>Player</th><th class="num">Quota</th><th class="num">Points</th><th class="num">+/-</th><th class="num">Season Pts</th></tr></thead><tbody>`;
+  ev.rows.forEach(r=> h+=`<tr ${r.pos===1?'class="winner"':''}><td class="pos">${r.pos}</td><td><b>${r.name}</b></td><td class="num">${r.quota}</td><td class="num">${r.points}</td><td class="num ${r.diff>=0?'plus':'minus'}"><b>${signed(r.diff)}</b></td><td class="num">${r.seasonPts}</td></tr>`);
+  h+=`</tbody></table><div class="note">This combined 18 is what counts in the season standings &mdash; the two nines don't also count separately for season points. Purse &amp; skins still settle per nine above.</div>`;
+  return h;
+}
+function roundResultTable(c){
+  if(!c.rows.some(r=>r.hasPts)) return `<div class="empty">No scores entered for this round yet.</div>`;
+  let h=`<table><thead><tr><th class="pos">#</th><th>Player</th><th class="num">Quota</th>
+    <th class="num">Points</th><th class="num">+/-</th><th class="num">Pts</th>`;
+  if(c.skinsPot>0) h+=`<th class="num">Skins</th>`;
+  h+=`<th class="num">$ Won</th></tr></thead><tbody>`;
+  c.rows.forEach(r=>{
+    if(!r.hasPts){ h+=`<tr style="opacity:.4"><td class="pos">—</td><td>${r.name}</td><td class="num">${r.quota}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>${c.skinsPot>0?'<td class="num">—</td>':''}<td class="num">—</td></tr>`; return; }
+    const tot=(r.purse||0)+(r.skinsMoney||0);
+    h+=`<tr ${r.pos===1?'class="winner"':''}><td class="pos">${r.pos}</td><td><b>${r.name}</b></td>
+      <td class="num">${r.quota}</td><td class="num">${r.points}</td>
+      <td class="num ${r.diff>=0?'plus':'minus'}"><b>${signed(r.diff)}</b></td>
+      <td class="num">${r.seasonPts}</td>`;
+    if(c.skinsPot>0) h+=`<td class="num">${r.skinsWon||0}</td>`;
+    h+=`<td class="num money">${tot>0?money(tot):'—'}</td></tr>`;
+  });
+  h+=`</tbody></table>`;
+  let foot=[];
+  if(c.pot>0) foot.push(`Purse: ${money(c.pot)}`);
+  if(c.skinsPot>0) foot.push(`Skins pot: ${money(c.skinsPot)} (${money(c.perSkin)}/skin)`);
+  if(foot.length) h+=`<div class="note">${foot.join(' &nbsp;•&nbsp; ')}</div>`;
+  return h;
+}
+
+/* ---------- Rounds & score entry ---------- */
+function viewRounds(){
+  let html=`<div class="card"><div class="toolbar">
+    <button class="btn" onclick="newRound()">+ New Round</button>
+    <div class="spacer"></div></div>`;
+  if(S.players.length===0){ html+=`<div class="empty">Add players first.</div></div>`; return html; }
+  if(S.rounds.length===0){ html+=`<div class="empty">No rounds yet. Click <b>New Round</b> to start.</div></div>`; return html; }
+  html+=`</div>`;
+  // newest first
+  S.rounds.map((rd,i)=>[rd,i]).reverse().forEach(([rd,i])=>{
+    const c=calcRound(rd,i);
+    const scoredN=c.rows.filter(r=>r.hasPts).length;
+    html+=`<details class="round" ${i===S.rounds.length-1?'open':''}>
+      <summary><span>${rd.date||'Round '+(i+1)} <span class="meta">${(Number(rd.holes)||18)===9?'9-hole'+(partnerOf(rd)?' · paired':''):'18-hole'}${rd.course?' · '+rd.course:''}</span></span>
+      <span class="meta">${scoredN}/${rd.entries.length} scored</span></summary>
+      <div class="round-body">${roundEditor(rd,i,c)}</div></details>`;
+  });
+  return html;
+}
+
+function roundEditor(rd,i,c){
+  const mode = rd.entryMode||"points"; // points | holes
+  const nHoles = Number(rd.holes)||18;
+  const partner = partnerOf(rd);
+  let h=`<div class="row" style="margin-top:12px">
+    <div><label>Date</label><input type="date" value="${rd.date||''}" onchange="updRound('${rd.id}','date',this.value)"></div>
+    <div><label>Course</label><input value="${rd.course||''}" placeholder="Course name" onchange="updRound('${rd.id}','course',this.value)"></div>
+    <div style="flex:0 0 auto"><label>Holes</label>
+      <div class="seg"><button class="${nHoles===18?'on':''}" onclick="updRound('${rd.id}','holes',18)">18</button>
+      <button class="${nHoles===9?'on':''}" onclick="updRound('${rd.id}','holes',9)">9</button></div></div>
+    <div style="flex:0 0 auto"><label>Entry mode</label>
+      <div class="seg"><button class="${mode==='points'?'on':''}" onclick="updRound('${rd.id}','entryMode','points')">Points</button>
+      <button class="${mode==='holes'?'on':''}" onclick="updRound('${rd.id}','entryMode','holes')">Hole-by-hole</button></div></div>
+  </div>`;
+  if(nHoles===9){
+    const others=S.rounds.filter(r=>r.id!==rd.id && (Number(r.holes)||18)===9);
+    h+=`<div class="row" style="margin-top:10px"><div><label>Combine with another 9 (forms an 18 for standings)</label>
+      <select onchange="updRound('${rd.id}','pairWith',this.value)">
+      <option value="">&mdash; none &mdash;</option>
+      ${others.map(o=>`<option value="${o.id}" ${rd.pairWith===o.id?'selected':''}>${o.date||'Round'}${o.course?' · '+o.course:''}</option>`).join('')}
+      </select></div></div>`;
+  }
+  h+=`<div class="note">Quota = ${nHoles===9?'½ × ('+S.settings.quotaCap+' − handicap)':S.settings.quotaCap+' − handicap'} (auto-filled, editable per round). Enter each player's Stableford <b>points</b>. ${mode==='holes'?'Hole-by-hole gross scores feed the skins game and auto-sum is shown.':'Switch to <b>Hole-by-hole</b> to also run skins.'}${nHoles===9?' This is a <b>9-hole</b> round.':''}</div>`;
+
+  if(mode==="points"){
+    h+=`<table><thead><tr><th>Player</th><th class="num">Quota</th><th class="num">Points</th><th class="num">+/-</th></tr></thead><tbody>`;
+    rd.entries.forEach(e=>{
+      const r=c.rows.find(x=>x.playerId===e.playerId)||{};
+      h+=`<tr><td>${r.name||''}</td>
+        <td class="num" style="max-width:80px"><input type="number" value="${e.quota??r.quota??''}" onchange="updEntry('${rd.id}','${e.playerId}','quota',this.value)"></td>
+        <td class="num" style="max-width:80px"><input type="number" value="${e.points??''}" onchange="updEntry('${rd.id}','${e.playerId}','points',this.value)"></td>
+        <td class="num ${r.diff>=0?'plus':'minus'}">${r.hasPts?signed(r.diff):'—'}</td></tr>`;
+    });
+    h+=`</tbody></table>`;
+  } else {
+    h+=`<div style="overflow-x:auto"><table class="scoregrid"><thead><tr><th>Player</th>`;
+    for(let n=1;n<=nHoles;n++) h+=`<th class="num hsmall">${n}</th>`;
+    h+=`<th class="num">Gross</th><th class="num">Pts</th><th class="num">Quota</th><th class="num">+/-</th></tr></thead><tbody>`;
+    rd.entries.forEach(e=>{
+      const r=c.rows.find(x=>x.playerId===e.playerId)||{};
+      const g=e.gross||Array(nHoles).fill("");
+      const gross=g.slice(0,nHoles).reduce((a,x)=>a+(x?Number(x):0),0);
+      h+=`<tr><td style="white-space:nowrap">${r.name||''}</td>`;
+      for(let n=0;n<nHoles;n++) h+=`<td style="max-width:40px"><input style="width:38px" type="number" value="${g[n]??''}" onchange="updGross('${rd.id}','${e.playerId}',${n},this.value)"></td>`;
+      h+=`<td class="num">${gross||'—'}</td>
+        <td class="num" style="max-width:70px"><input type="number" value="${e.points??''}" onchange="updEntry('${rd.id}','${e.playerId}','points',this.value)"></td>
+        <td class="num" style="max-width:70px"><input type="number" value="${e.quota??r.quota??''}" onchange="updEntry('${rd.id}','${e.playerId}','quota',this.value)"></td>
+        <td class="num ${r.diff>=0?'plus':'minus'}">${r.hasPts?signed(r.diff):'—'}</td></tr>`;
+    });
+    h+=`</tbody></table></div>`;
+  }
+  h+=`<h3>Results</h3>${roundResultTable(c)}`;
+  if(partner){ const other=S.rounds.find(r=>r.id===partner); if(other){ const ev=combinedEvent(rd, other, S.rounds.indexOf(rd), S.rounds.indexOf(other)); h+=`<h3>Combined 18 &mdash; with ${other.date||'paired nine'}${other.course?' ('+other.course+')':''}</h3>`+combinedTable(ev); } }
+  h+=`<div class="toolbar" style="margin-top:14px"><div class="spacer"></div>
+    <button class="btn danger" onclick="delRound('${rd.id}')">Delete round</button></div>`;
+  return h;
+}
+
+/* ---------- Skins detail ---------- */
+function viewSkins(){
+  if(S.settings.skinsBuyIn<=0) return `<div class="card"><h2>Skins</h2><div class="empty">Skins are turned off. Set a skins buy-in in <b>Settings</b> to enable.</div></div>`;
+  let html=`<div class="card"><h2>Skins Game</h2><div class="sub">${S.settings.skinsType==='net'?'Net':'Gross'} skins • ${money(S.settings.skinsBuyIn)} buy-in per player • low score on a hole wins; ties carry over.</div></div>`;
+  const rounds=S.rounds.map((rd,i)=>[rd,i]).reverse().filter(([rd,i])=>calcRound(rd,i).skinsPot>0);
+  if(rounds.length===0) return html+`<div class="card"><div class="empty">No hole-by-hole scores entered yet. In <b>Rounds &amp; Scores</b>, switch a round to <b>Hole-by-hole</b> entry.</div></div>`;
+  rounds.forEach(([rd,i])=>{
+    const c=calcRound(rd,i);
+    html+=`<div class="card"><h2>${rd.date||'Round '+(i+1)}</h2>
+      <div class="sub">Pot ${money(c.skinsPot)} • ${money(c.perSkin)} per skin</div>`;
+    // winners summary
+    const winners=c.rows.filter(r=>r.skinsWon>0).sort((a,b)=>b.skinsWon-a.skinsWon);
+    html+=`<table><thead><tr><th>Player</th><th class="num">Skins</th><th class="num">$</th></tr></thead><tbody>`;
+    winners.forEach(r=> html+=`<tr><td>${r.name}</td><td class="num">${r.skinsWon}</td><td class="num money">${money(r.skinsMoney)}</td></tr>`);
+    if(!winners.length) html+=`<tr><td colspan="3" class="empty">All holes tied — full carryover (no skins won).</td></tr>`;
+    html+=`</tbody></table>`;
+    // hole detail
+    html+=`<h3>Hole-by-hole</h3><div style="overflow-x:auto"><table><thead><tr><th>Hole</th>${c.skinsDetail.map(d=>`<th class="num hsmall">${d.hole}</th>`).join('')}</tr></thead><tbody>
+      <tr><td>Won by</td>${c.skinsDetail.map(d=>`<td class="num hsmall">${d.skins>0?d.winner.split(' ')[0]+' ('+d.skins+')':'—'}</td>`).join('')}</tr>
+      </tbody></table></div></div>`;
+  });
+  return html;
+}
+
+/* ---------- Players ---------- */
+function viewPlayers(){
+  let html=`<div class="card"><div class="toolbar"><div><h2>Players</h2>
+    <div class="sub">Quota auto-calculates as ${S.settings.quotaCap} − handicap. Edit a handicap anytime.</div></div>
+    <div class="spacer"></div>
+    <button class="btn syncbtn" onclick="syncGhin()">⟳ Sync from GHIN</button></div>
+    <div class="row" style="align-items:flex-end">
+      <div style="flex:2"><label>Name</label><input id="pName" placeholder="Player name"></div>
+      <div><label>GHIN #</label><input id="pGhin" placeholder="optional"></div>
+      <div><label>Handicap</label><input id="pHcp" type="number" placeholder="e.g. 14"></div>
+      <div style="flex:0 0 auto"><label>Team</label><select id="pTeam"><option value="1">${S.settings.team1Name||'Team 1'}</option><option value="2">${S.settings.team2Name||'Team 2'}</option></select></div>
+      <div style="flex:0 0 auto"><button class="btn" onclick="addPlayer()">Add</button></div>
+    </div></div>`;
+  if(S.players.length===0) return html+`<div class="card"><div class="empty">No players yet.</div></div>`;
+  html+=`<div class="card"><table><thead><tr><th>Player</th><th>Team</th><th>GHIN #</th><th class="num">Handicap</th><th class="num">Quota</th><th></th></tr></thead><tbody>`;
+  S.players.forEach(p=>{
+    html+=`<tr><td><input value="${p.name}" onchange="updPlayer('${p.id}','name',this.value)"></td>
+      <td style="max-width:120px"><select onchange="updPlayer('${p.id}','team',this.value)"><option value="1" ${(p.team||1)==1?'selected':''}>${S.settings.team1Name||'Team 1'}</option><option value="2" ${p.team==2?'selected':''}>${S.settings.team2Name||'Team 2'}</option></select></td>
+      <td style="max-width:130px"><input value="${p.ghin||''}" placeholder="—" onchange="updPlayer('${p.id}','ghin',this.value)"></td>
+      <td class="num" style="max-width:90px"><input type="number" value="${p.handicap}" onchange="updPlayer('${p.id}','handicap',this.value)"></td>
+      <td class="num"><b>${quotaFor(p)}</b></td>
+      <td class="num"><button class="mini del" onclick="delPlayer('${p.id}')">Remove</button></td></tr>`;
+  });
+  html+=`</tbody></table>
+    <div class="note">Add each player's <b>GHIN number</b> to use the live handicap sync. Export a backup (Settings), run the included <b>ghin-sync</b> script to refresh everyone's current Handicap Index from GHIN, then import the updated file. Quotas recalculate automatically.</div></div>`;
+  return html;
+}
+
+/* ---------- Settings ---------- */
+function viewSettings(){
+  const s=S.settings;
+  return `<div class="card"><h2>League Settings</h2>
+    <div class="row">
+      <div style="flex:2"><label>League name</label><input value="${s.leagueName}" onchange="updSetting('leagueName',this.value)"></div>
+      <div><label>Quota base (default 36)</label><input type="number" value="${s.quotaCap}" onchange="updSetting('quotaCap',this.value)"></div>
+    </div>
+    <div class="row">
+      <div><label>Team 1 name</label><input value="${s.team1Name||'Team 1'}" onchange="updSetting('team1Name',this.value)"></div>
+      <div><label>Team 2 name</label><input value="${s.team2Name||'Team 2'}" onchange="updSetting('team2Name',this.value)"></div>
+    </div>
+    <h3>Quota method</h3>
+    <div class="row"><div><label>Rolling average window (0 = static 36−HC)</label>
+      <input type="number" value="${s.rollingWindow}" onchange="updSetting('rollingWindow',this.value)"></div>
+      <div><label>&nbsp;</label><div class="note" style="margin:0">Set to e.g. 5 to make each quota the average of a player's last 5 point totals once that many rounds exist (classic self-adjusting dogfight). Leave 0 to keep 36−handicap.</div></div>
+    </div>
+    <h3>Weekly purse</h3>
+    <div class="row">
+      <div><label>Buy-in per player ($)</label><input type="number" value="${s.buyIn}" onchange="updSetting('buyIn',this.value)"></div>
+      <div><label>Payout</label><select onchange="updSetting('purseMode',this.value)">
+        <option value="top3" ${s.purseMode==='top3'?'selected':''}>Top 3 split 50/30/20</option>
+        <option value="beatquota" ${s.purseMode==='beatquota'?'selected':''}>Everyone who beats quota splits evenly</option>
+        <option value="winnertakeall" ${s.purseMode==='winnertakeall'?'selected':''}>Winner takes all</option>
+      </select></div>
+    </div>
+    <h3>Skins</h3>
+    <div class="row">
+      <div><label>Skins buy-in per player ($, 0 = off)</label><input type="number" value="${s.skinsBuyIn}" onchange="updSetting('skinsBuyIn',this.value)"></div>
+      <div><label>Type</label><select onchange="updSetting('skinsType',this.value)">
+        <option value="gross" ${s.skinsType==='gross'?'selected':''}>Gross</option>
+        <option value="net" ${s.skinsType==='net'?'selected':''}>Net (handicap strokes)</option>
+      </select></div>
+    </div>
+    <h3>Season points by finish</h3>
+    <div class="row"><div style="flex:3"><label>Points for 1st, 2nd, 3rd… (comma separated; everyone else gets 1)</label>
+      <input value="${s.seasonPoints.join(', ')}" onchange="updSeasonPoints(this.value)"></div></div>
+    <div class="card" style="background:var(--panel2);margin-top:18px">
+      <h3 style="margin-top:0">Data</h3>
+      <div class="toolbar">
+        <button class="btn alt" onclick="loadSample()">Load sample data</button>
+        <button class="btn ghost" onclick="exportData()">Export backup (.json)</button>
+        <button class="btn ghost" onclick="document.getElementById('imp').click()">Import backup</button>
+        <input id="imp" type="file" accept="application/json" class="hide" onchange="importData(this)">
+        <button class="btn danger" onclick="wipe()">Erase everything</button>
+      </div>
+      <div class="note">All data is saved in this browser only (localStorage). Use Export to keep a backup or move it to another device. Bookmark this page to find it again.</div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Rules ---------- */
+function viewRules(){
+  return `<div class="card rules"><h2>How a Dogfight Works</h2>
+  <p>A <b>dogfight</b> is a quota-based points game that lets golfers of very different skill levels compete head to head and fairly. Instead of lowest score wins, every player has a personal <b>quota</b> — a target number of points — and you compete on how far you <i>beat your own quota</i>.</p>
+
+  <h3>1. Points (Stableford)</h3>
+  <p>You earn points on each hole based on your score. The standard scale relative to par:</p>
+  <ul>
+    <li>Double bogey or worse = <b>0</b></li>
+    <li>Bogey = <b>1</b></li>
+    <li>Par = <b>2</b></li>
+    <li>Birdie = <b>3</b></li>
+    <li>Eagle = <b>4</b>, Albatross = <b>5</b></li>
+  </ul>
+  <p>Add them up for your round total. (Many groups play this <i>net</i> — applying handicap strokes hole-by-hole — but with the 36−handicap quota below, gross points work cleanly. Whatever your group agrees on, you just enter the points total.)</p>
+
+  <h3>2. Quota</h3>
+  <p>This league sets <b>Quota = ${S.settings.quotaCap} − handicap</b>. A 14-handicap has a quota of ${S.settings.quotaCap-14}; a 4-handicap has a quota of ${S.settings.quotaCap-4}. The lower the handicap, the higher the bar.</p>
+
+  <h3>3. The result (+/-)</h3>
+  <p>Your round score is <b>points − quota</b>. Beat your quota by the most and you win the round. Example: quota 22, you post 26 points → <b>+4</b>. Whoever has the highest +/- wins.</p>
+  <p class="muted">Tip: many dogfights eventually switch the quota to a <b>rolling average</b> of your recent rounds, so it self-corrects — play well and your quota rises, making it harder next time; slump and it drops. You can switch this on in Settings once you have a few rounds logged.</p>
+
+  <h3>4. The money (three games at once)</h3>
+  <ul>
+    <li><b>Weekly purse:</b> everyone buys in (currently ${money(S.settings.buyIn)}). The pot pays out by finish vs. quota — currently set to <b>${s_purseLabel()}</b>.</li>
+    <li><b>Skins:</b> optional side pot (currently ${S.settings.skinsBuyIn>0?money(S.settings.skinsBuyIn)+' buy-in':'off'}). Low score on a hole wins that hole's skin; ties carry the skin to the next hole. Pot splits evenly across all skins won.</li>
+    <li><b>Season points:</b> each round awards points by finish position (${S.settings.seasonPoints.join('-')}…, then 1). These accumulate all season for the overall individual title.</li>
+    <li><b>Team battle:</b> every player is on <b>${S.settings.team1Name||'Team 1'}</b> or <b>${S.settings.team2Name||'Team 2'}</b>. Those same season points also sum by team into a season-long Team vs Team battle, shown at the top of the Standings page. Set each player's team on the Players tab.</li>
+  </ul>
+
+  <h3>Playing 9 holes &amp; combining nines</h3>
+  <p>Set any round to <b>9 holes</b> and quotas automatically halve (a 14-handicap's 9-hole quota becomes about ${Math.round((S.settings.quotaCap-14)/2)}). Points, +/-, purse, and skins all work the same over 9. If you play two nines you want scored as one 18, open one of them and choose the other under <b>Combine with</b> &mdash; the app sums both nines into a combined 18 that counts as a single event in the season standings. Each nine still settles its own purse and skins.</p>
+
+  <h3>5. Running a round day-of</h3>
+  <ul>
+    <li>Collect buy-ins. Confirm everyone's quota (auto-shown on the Players tab).</li>
+    <li>Play. Track points; if you want skins, keep each player's hole-by-hole gross.</li>
+    <li>After the round, open <b>Rounds &amp; Scores</b>, create the round, and enter points (and hole scores for skins).</li>
+    <li>The app ranks everyone, splits the purse and skins, and updates the season standings automatically.</li>
+  </ul>
+  <div class="note">Everything you enter is calculated live and saved in this browser. Share the standings by exporting, or just pass the device around.</div>
+  </div>`;
+}
+function s_purseLabel(){
+  return {top3:"Top 3 split 50/30/20", beatquota:"Everyone who beats quota splits evenly", winnertakeall:"Winner takes all"}[S.settings.purseMode];
+}
+
+/* ============================ ACTIONS ============================ */
+function addPlayer(){
+  const name=document.getElementById("pName").value.trim();
+  const ghin=document.getElementById("pGhin").value.trim();
+  const hcp=parseFloat(document.getElementById("pHcp").value);
+  if(!name){ alert("Enter a name"); return; }
+  S.players.push({id:uid(),name,ghin,team:Number((document.getElementById('pTeam')||{}).value)||1,handicap:isNaN(hcp)?18:hcp});
+  // add entry slot to existing rounds
+  S.rounds.forEach(rd=> rd.entries.push({playerId:S.players[S.players.length-1].id,points:"",quota:"",gross:Array(18).fill("")}));
+  save(); render();
+}
+function updPlayer(id,f,v){ const p=S.players.find(x=>x.id===id); if(!p)return; p[f]= f==='handicap'?(parseFloat(v)||0):(f==='team'?Number(v):v); save(); render(); }
+function delPlayer(id){ if(!confirm("Remove this player and their scores?"))return;
+  S.players=S.players.filter(p=>p.id!==id);
+  S.rounds.forEach(rd=> rd.entries=rd.entries.filter(e=>e.playerId!==id)); save(); render(); }
+
+function newRound(){
+  const today=new Date().toISOString().slice(0,10);
+  S.rounds.push({id:uid(),date:today,course:"",holes:18,pairWith:"",entryMode:"points",
+    entries:S.players.map(p=>({playerId:p.id,points:"",quota:"",gross:Array(18).fill("")}))});
+  save(); go('rounds');
+}
+function updRound(id,f,v){ const rd=S.rounds.find(x=>x.id===id); if(!rd)return; rd[f]=v; save(); render(); }
+function delRound(id){ if(!confirm("Delete this round?"))return; S.rounds=S.rounds.filter(r=>r.id!==id); save(); render(); }
+function updEntry(rid,pid,f,v){ const rd=S.rounds.find(x=>x.id===rid); const e=rd.entries.find(x=>x.playerId===pid);
+  if(!e)return; e[f]= v===""? "" : Number(v); save(); render(); }
+function updGross(rid,pid,h,v){ const rd=S.rounds.find(x=>x.id===rid); const e=rd.entries.find(x=>x.playerId===pid);
+  if(!e)return; if(!e.gross) e.gross=Array(18).fill(""); e.gross[h]= v===""?"":Number(v);
+  // auto-sum stableford if all 18 present? leave points manual. just save.
+  save(); render(); }
+
+function updSetting(k,v){
+  if(["buyIn","skinsBuyIn","quotaCap","rollingWindow"].includes(k)) v=parseFloat(v)||0;
+  S.settings[k]=v; save(); render();
+}
+function updSeasonPoints(v){
+  const arr=v.split(",").map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x));
+  S.settings.seasonPoints=arr.length?arr:DEFAULT_SETTINGS.seasonPoints; save(); render();
+}
+
+/* ---------- data utilities ---------- */
+function exportData(){
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download=(S.settings.leagueName||"dogfight").replace(/\s+/g,"_")+"_backup.json"; a.click();
+}
+function importData(input){
+  const f=input.files[0]; if(!f)return; const r=new FileReader();
+  r.onload=()=>{ try{ S=JSON.parse(r.result); S.settings={...DEFAULT_SETTINGS,...S.settings}; save(); render(); alert("Imported."); }
+    catch(e){ alert("Could not read that file."); } };
+  r.readAsText(f);
+}
+function wipe(){ if(!confirm("Erase ALL players, rounds and settings? This cannot be undone."))return;
+  S=JSON.parse(JSON.stringify(SEED)); save(); render(); }
+
+function loadSample(){
+  if(S.players.length && !confirm("Replace current data with sample data?"))return;
+  const names=[["Will",8,"2500347",1],["Marcus",14,"1188205",2],["Tony",2,"9911234",1],["Doug",22,"7720984",2],["Rich",11,"3344120",1],["Sergio",18,"6655231",2],["JP",6,"4521900",1],["Hank",16,"8890076",2]];
+  S=JSON.parse(JSON.stringify(SEED));
+  S.settings.leagueName="The Saturday Dogfight";
+  S.settings.team1Name="Hackers"; S.settings.team2Name="Ringers";
+  names.forEach(([n,h,g,t])=> S.players.push({id:uid(),name:n,handicap:h,ghin:g,team:t}));
+  // two sample rounds with points and one with hole scores
+  function mkPoints(map){ return S.players.map(p=>({playerId:p.id,points:map[p.name],quota:"",gross:Array(18).fill("")})); }
+  S.rounds.push({id:uid(),date:"2026-05-02",course:"Pine Ridge GC",entryMode:"points",
+    entries:mkPoints({Will:30,Marcus:26,Tony:33,Doug:18,Rich:25,Sergio:21,JP:31,Hank:24})});
+  S.rounds.push({id:uid(),date:"2026-05-16",course:"Pine Ridge GC",entryMode:"points",
+    entries:mkPoints({Will:27,Marcus:29,Tony:31,Doug:24,Rich:22,Sergio:26,JP:28,Hank:20})});
+  // a hole-by-hole round (for skins) — par 4 baseline-ish gross scores
+  const holes={
+    Will:[4,5,4,3,4,5,4,4,3, 4,4,5,4,3,4,4,5,4],
+    Marcus:[5,5,4,4,5,5,4,5,4, 5,5,6,4,4,5,5,5,5],
+    Tony:[4,4,3,3,4,4,4,4,3, 4,4,4,3,3,4,4,4,4],
+    Doug:[6,6,5,5,6,7,5,6,5, 6,5,7,5,5,6,6,7,6],
+    Rich:[5,4,4,4,5,5,5,4,4, 5,5,5,4,4,5,4,5,5],
+    Sergio:[5,5,5,4,5,6,5,5,4, 5,5,6,5,4,5,5,6,5],
+    JP:[4,4,4,3,4,5,4,4,3, 4,4,5,4,3,4,4,4,4],
+    Hank:[5,6,5,4,5,6,5,5,4, 5,6,6,5,4,5,5,6,5]
+  };
+  const pts3={Will:28,Marcus:23,Tony:34,Doug:19,Rich:24,Sergio:22,JP:30,Hank:21};
+  S.rounds.push({id:uid(),date:"2026-06-06",course:"Lakeside National",entryMode:"holes",
+    entries:S.players.map(p=>({playerId:p.id,points:pts3[p.name],quota:"",gross:holes[p.name]}))});
+  // two 9-hole rounds, linked into one combined 18
+  const f9={Will:14,Marcus:12,Tony:17,Doug:9,Rich:13,Sergio:11,JP:15,Hank:10};
+  const b9={Will:15,Marcus:13,Tony:16,Doug:11,Rich:12,Sergio:14,JP:16,Hank:12};
+  const frontId=uid();
+  S.rounds.push({id:frontId,date:"2026-06-13",course:"Pine Ridge (Front 9)",holes:9,pairWith:"",entryMode:"points",
+    entries:S.players.map(p=>({playerId:p.id,points:f9[p.name],quota:"",gross:Array(9).fill("")}))});
+  S.rounds.push({id:uid(),date:"2026-06-13",course:"Pine Ridge (Back 9)",holes:9,pairWith:frontId,entryMode:"points",
+    entries:S.players.map(p=>({playerId:p.id,points:b9[p.name],quota:"",gross:Array(9).fill("")}))});
+  save(); go('dashboard');
+}
+
+/* ============================ GHIN SYNC ============================ */
+async function syncGhin(){
+  const withGhin = S.players.filter(p=>p.ghin && String(p.ghin).trim());
+  if(!withGhin.length){ alert("No players have a GHIN number yet. Add GHIN #s first."); return; }
+  const btns=document.querySelectorAll(".syncbtn");
+  btns.forEach(b=>{ b.disabled=true; b.textContent="Syncing…"; });
+  try{
+    const r=await fetch("/api/sync",{method:"POST"});
+    const data=await r.json();
+    if(!r.ok){ throw new Error(data.error||"Sync failed"); }
+    // merge updated handicaps by ghin/id
+    let changed=0;
+    (data.updated||[]).forEach(u=>{
+      const p=S.players.find(x=> (u.id&&x.id===u.id) || (u.ghin&&String(x.ghin)===String(u.ghin)));
+      if(p && u.handicap!=null && p.handicap!==u.handicap){ p.handicap=u.handicap; changed++; }
+      else if(p && u.handicap!=null){ p.handicap=u.handicap; }
+    });
+    save(); render();
+    const errs=(data.errors||[]);
+    alert(`GHIN sync complete.\nUpdated ${data.updated?data.updated.length:0} player(s)${changed?` (${changed} handicap change${changed>1?'s':''})`:''}.`+
+      (errs.length?`\n\nCouldn't fetch: ${errs.map(e=>e.name||e.ghin).join(', ')}`:''));
+  }catch(e){
+    alert("GHIN sync failed: "+e.message+"\n\nMake sure GHIN_USERNAME and GHIN_PASSWORD are set in your Railway variables.");
+  }finally{
+    btns.forEach(b=>{ b.disabled=false; b.textContent="⟳ Sync from GHIN"; });
+  }
+}
+
+/* ============================ INIT ============================ */
+init();
+</script>
+</body>
+</html>
