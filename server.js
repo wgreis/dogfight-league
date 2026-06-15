@@ -118,22 +118,38 @@ function scheduleAutoSync() {
 }
 scheduleAutoSync();
 
-/* ---------- GHIN golfer search (name -> ghin/index), used for roster setup ---------- */
+/* ---------- GHIN golfer search (name -> ghin/index), used for roster setup ----------
+   The ghin lib authenticates correctly but omits name params, so we reuse its token
+   and call GHIN's golfer search directly with last_name/first_name/state. */
+let _ghinClient = null;
+async function ghinToken() {
+  if (!_ghinClient) _ghinClient = new GhinClient({ username: process.env.GHIN_USERNAME, password: process.env.GHIN_PASSWORD });
+  try { await _ghinClient.golfers.search({ last_name: "warmup" }); } catch (e) { /* triggers login */ }
+  return _ghinClient.httpClient && _ghinClient.httpClient.accessToken;
+}
 app.get("/api/search", async (req, res) => {
-  const username = process.env.GHIN_USERNAME, password = process.env.GHIN_PASSWORD;
-  if (!username || !password) return res.status(400).json({ error: "GHIN creds not set" });
+  if (!process.env.GHIN_USERNAME || !process.env.GHIN_PASSWORD) return res.status(400).json({ error: "GHIN creds not set" });
   try {
-    const client = new GhinClient({ username, password });
-    const golfers = await client.golfers.search({
-      last_name: req.query.last || undefined,
-      first_name: req.query.first || undefined,
-      state: req.query.state || undefined,
-      status: "Active", per_page: 50
-    });
-    res.json({ golfers: (golfers || []).map(g => ({
+    const token = await ghinToken();
+    if (!token) return res.status(500).json({ error: "could not authenticate to GHIN" });
+    const u = new URL("https://api2.ghin.com/api/v1/golfers.json");
+    u.searchParams.set("source", "GHINcom");
+    u.searchParams.set("from_ghin", "true");
+    u.searchParams.set("per_page", "50");
+    u.searchParams.set("page", "1");
+    u.searchParams.set("status", "Active");
+    u.searchParams.set("sorting_criteria", "full_name");
+    u.searchParams.set("order", "asc");
+    if (req.query.last)  u.searchParams.set("last_name", req.query.last);
+    if (req.query.first) u.searchParams.set("first_name", req.query.first);
+    if (req.query.state) u.searchParams.set("state", req.query.state);
+    const gr = await fetch(u, { headers: { "Content-Type": "application/json", source: "GHINcom", Authorization: "Bearer " + token } });
+    const j = await gr.json().catch(() => ({}));
+    const golfers = (j.golfers || []).map(g => ({
       ghin: g.ghin, first: g.first_name, last: g.last_name,
       club: g.club_name, state: g.state, hi: (g.hi_value ?? g.handicap_index)
-    })) });
+    }));
+    res.json({ golfers, upstream: gr.status });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
